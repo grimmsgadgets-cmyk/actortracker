@@ -15,7 +15,7 @@
 - Preserved previous JSON API shapes while extending internal tables minimally.
 - Added `pyproject.toml` so project can run with `uv` tooling.
 
-## Security Stabilization Plan (2026-02-16)
+## Security Controls
 ### Scope
 - Fix SSRF risk for user-supplied source URLs.
 - Fix stored XSS risk in raw HTML endpoints.
