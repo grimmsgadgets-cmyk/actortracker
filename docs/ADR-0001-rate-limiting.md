@@ -57,8 +57,9 @@ Cons:
 - heavy-write routes have stricter limits
 - return clear retry guidance to callers
 
-## Future Upgrade Path
-For Team/Enterprise multi-instance deployments:
-- move limiter state to Redis
-- key on tenant + user identity (not only IP)
-- add route-specific budgets and observability dashboards
+## Future Considerations
+
+If deployment needs change (e.g., multiple app instances or higher concurrency), the limiter may need to move to shared state storage to maintain consistency across processes.
+
+For now, the in-memory implementation provides sufficient protection for single-instance and small self-hosted deployments.
+
