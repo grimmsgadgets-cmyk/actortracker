@@ -2019,7 +2019,6 @@ def _build_recent_activity_synthesis(
     else:
         confidence_label = 'Low'
 
-    points: list[dict[str, str]] = []
     if parsed_dates:
         newest = max(parsed_dates).date().isoformat()
         oldest = min(parsed_dates).date().isoformat()
