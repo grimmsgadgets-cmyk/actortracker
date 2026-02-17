@@ -592,20 +592,156 @@ def _match_mitre_group(actor_name: str) -> dict[str, object] | None:
         return best
     return None
 
+MITRE_SOFTWARE_CACHE: list[dict[str, object]] | None = None
+
+
+def _load_mitre_software() -> list[dict[str, object]]:
+    """Load ATT&CK Software (malware + tool) entries for name matching."""
+    global MITRE_SOFTWARE_CACHE
+    if MITRE_SOFTWARE_CACHE is not None:
+        return MITRE_SOFTWARE_CACHE
+
+    dataset_path = _mitre_dataset_path()
+    if not dataset_path.exists():
+        MITRE_SOFTWARE_CACHE = []
+        return MITRE_SOFTWARE_CACHE
+
+    parsed = _load_mitre_dataset()
+    if not parsed or not isinstance(parsed, dict):
+        MITRE_SOFTWARE_CACHE = []
+        return MITRE_SOFTWARE_CACHE
+
+    software: list[dict[str, object]] = []
+    for obj in parsed.get("objects", []):
+        if not isinstance(obj, dict):
+            continue
+
+        obj_type = str(obj.get("type") or "")
+        if obj_type not in {"malware", "tool"}:
+            continue
+
+        if bool(obj.get("revoked")) or bool(obj.get("x_mitre_deprecated")):
+            continue
+
+        name = str(obj.get("name") or "").strip()
+        if not name:
+            continue
+
+        description = str(obj.get("description") or "").strip()
+
+        # aliases for software are commonly in x_mitre_aliases
+        aliases: list[str] = []
+        x_aliases = obj.get("x_mitre_aliases", [])
+        if isinstance(x_aliases, list):
+            aliases = [str(a).strip() for a in x_aliases if str(a).strip()]
+
+        attack_id: str | None = None
+        attack_url: str | None = None
+        ext_refs = obj.get("external_references", [])
+        if isinstance(ext_refs, list):
+            for ref in ext_refs:
+                if not isinstance(ref, dict):
+                    continue
+                if str(ref.get("source_name") or "") != "mitre-attack":
+                    continue
+                external_id = str(ref.get("external_id") or "")
+                if external_id.startswith("S"):
+                    attack_id = external_id
+                    attack_url = str(ref.get("url") or "").strip()
+                    if not attack_url:
+                        attack_url = f"https://attack.mitre.org/software/{external_id}/"
+                    break
+
+        search_keys = {_normalize_actor_key(name)}
+        for alias in aliases:
+            search_keys.add(_normalize_actor_key(alias))
+
+        software.append(
+            {
+                "stix_id": str(obj.get("id") or ""),
+                "type": obj_type,  # malware/tool
+                "name": name,
+                "description": description,
+                "aliases": aliases,
+                "attack_id": attack_id,
+                "attack_url": attack_url,
+                "search_keys": search_keys,
+            }
+        )
+
+    MITRE_SOFTWARE_CACHE = software
+    return MITRE_SOFTWARE_CACHE
+
+
+def _match_mitre_software(name: str) -> dict[str, object] | None:
+    actor_key = _normalize_actor_key(name)
+    if not actor_key:
+        return None
+
+    items = _load_mitre_software()
+
+    # exact match first
+    for it in items:
+        if actor_key in it["search_keys"]:
+            return it
+
+    # fuzzy fallback
+    actor_tokens = set(actor_key.split())
+    if not actor_tokens:
+        return None
+
+    best = None
+    best_score = 0.0
+    for it in items:
+        nkey = _normalize_actor_key(str(it.get("name") or ""))
+        it_tokens = set(nkey.split())
+        if not it_tokens:
+            continue
+        overlap = len(actor_tokens & it_tokens) / len(actor_tokens | it_tokens)
+        if overlap > best_score:
+            best_score = overlap
+            best = it
+
+    if best is not None and best_score >= 0.6:
+        return best
+    return None
 
 def _build_actor_profile_from_mitre(actor_name: str) -> dict[str, str]:
     group = _match_mitre_group(actor_name)
     if group is None:
+        sw = _match_mitre_software(actor_name)
+        if sw is None:
+            return {
+                'summary': (
+                    f'No MITRE ATT&CK entry found for "{actor_name}". '
+                    'Try the exact name used in ATT&CK (group or software).'
+                ),
+                'source_label': 'MITRE ATT&CK Enterprise',
+                'source_url': 'https://attack.mitre.org/',
+                'group_name': actor_name,
+                'aliases_csv': '',
+            }
+
+        description = str(sw.get('description') or '').strip()
+        description = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', description)
+        description = re.sub(r'\(Citation:[^)]+\)', '', description, flags=re.IGNORECASE)
+        description = re.sub(r'\s{2,}', ' ', description).strip()
+        if description:
+            summary = _first_sentences(description, count=3)
+        else:
+            summary = f'MITRE ATT&CK has a software record for {sw["name"]}, but no description text was available.'
+
+        source_url = str(sw.get('attack_url') or 'https://attack.mitre.org/software/')
+        attack_id = str(sw.get('attack_id') or '').strip()
         return {
-            'summary': (
-                f'No MITRE ATT&CK group match found for "{actor_name}". '
-                'Use a known ATT&CK group name/alias (for example: APT29, FIN7, Lazarus Group).'
-            ),
-            'source_label': 'MITRE ATT&CK Enterprise',
-            'source_url': 'https://attack.mitre.org/groups/',
-            'group_name': actor_name,
-            'aliases_csv': '',
+            'summary': summary,
+            'source_label': f'MITRE ATT&CK Software {attack_id}'.strip(),
+            'source_url': source_url,
+            'group_name': str(sw.get('name') or actor_name),
+            'stix_id': str(sw.get('stix_id') or ''),
+            'aliases_csv': ', '.join(str(alias) for alias in sw.get('aliases', []) if str(alias).strip()),
         }
+
 
     description = str(group.get('description') or '').strip()
     description = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', description)
