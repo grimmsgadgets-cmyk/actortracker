@@ -292,7 +292,9 @@
         <section class="card">
           <h2 class="section-title">1) Who are they?</h2>
           <div class="section-body">
-          <p><strong>{{ notebook.actor.display_name }}</strong></p>
+          <p>{{ notebook.actor_profile_summary }}</p>
+          <p><small>Framework Group Match: {{ notebook.actor_profile_group_name }}</small></p>
+          <p><small>Source: <a href="{{ notebook.actor_profile_source_url }}" target="_blank" rel="noreferrer">{{ notebook.actor_profile_source_label }}</a></small></p>
           <p><strong>Common moves they use (top 3)</strong></p>
           {% if notebook.top_techniques %}
           <ul>
@@ -320,25 +322,15 @@
             <li><strong>New techniques count:</strong> {{ notebook.kpis.new_techniques_30d }}</li>
             <li><strong>Last checked:</strong> {{ notebook.kpis.last_verified_update }}</li>
           </ul>
-          <details class="compact">
-            <summary>View profile</summary>
-            <p><small>Framework Group Match: {{ notebook.actor_profile_group_name }}</small></p>
-            <p>{{ notebook.actor_profile_summary }}</p>
-            <p><small>Source: <a href="{{ notebook.actor_profile_source_url }}" target="_blank" rel="noreferrer">{{ notebook.actor_profile_source_label }}</a></small></p>
-            <p><strong>Emerging techniques observed</strong></p>
-            {% if notebook.emerging_technique_ids %}
-            <p>{{ notebook.emerging_technique_ids | join(', ') }}</p>
-            {% else %}
-            <p><small>No new technique IDs observed yet in actor-specific recent reporting.</small></p>
-            {% endif %}
-          </details>
+          <p><strong>Emerging techniques observed</strong></p>
+          {% if notebook.emerging_technique_ids %}
+          <p>{{ notebook.emerging_technique_ids | join(', ') }}</p>
+          {% else %}
+          <p><small>No new technique IDs observed yet in actor-specific recent reporting.</small></p>
+          {% endif %}
           <p><small>Created: {{ notebook.actor_created_date }}</small></p>
           </div>
-          {% if notebook.actor.is_tracked %}
-          <form method="post" action="/actors/{{ notebook.actor.id }}/untrack">
-            <button type="submit">Untrack actor</button>
-          </form>
-          {% else %}
+          {% if not notebook.actor.is_tracked %}
           <form method="post" action="/actors/{{ notebook.actor.id }}/track">
             <button type="submit">Track actor</button>
           </form>
