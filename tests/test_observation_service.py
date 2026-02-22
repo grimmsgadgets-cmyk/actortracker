@@ -53,3 +53,12 @@ def test_observation_source_keys_and_row_mapping():
     assert items[0]['source_name'] == 'CISA'
     assert items[0]['item_key'] == 'src-1'
     assert items[1]['source_name'] == ''
+
+
+def test_source_lookup_chunks_respects_chunk_size():
+    keys = [f'k-{idx}' for idx in range(1805)]
+    chunks = observation_service.source_lookup_chunks_core(keys, chunk_size=800)
+    assert len(chunks) == 3
+    assert len(chunks[0]) == 800
+    assert len(chunks[1]) == 800
+    assert len(chunks[2]) == 205

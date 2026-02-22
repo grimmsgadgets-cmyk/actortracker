@@ -853,10 +853,12 @@ def test_observation_filters_and_exports(tmp_path, monkeypatch):
         connection.commit()
 
     with TestClient(app_module.app) as client:
-        response = client.get(f"/actors/{actor['id']}/observations?analyst=ali&confidence=high")
+        response = client.get(f"/actors/{actor['id']}/observations?analyst=ali&confidence=high&limit=10&offset=0")
         assert response.status_code == 200
         payload = response.json()
         assert payload['actor_id'] == actor['id']
+        assert payload['limit'] == 10
+        assert payload['offset'] == 0
         assert len(payload['items']) == 1
         assert payload['items'][0]['updated_by'] == 'alice'
         assert payload['items'][0]['source_title'] == 'Unit 42 report'
@@ -977,7 +979,9 @@ def test_dashboard_and_observation_load_performance_guard(tmp_path, monkeypatch)
         obs_elapsed = time.perf_counter() - obs_start
         assert obs_response.status_code == 200
         payload = obs_response.json()
-        assert len(payload['items']) == 900
+        assert payload['limit'] == 100
+        assert payload['offset'] == 0
+        assert len(payload['items']) == 100
         assert obs_elapsed < 2.0
 
 

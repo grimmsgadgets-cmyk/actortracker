@@ -80,6 +80,12 @@ def observation_source_keys_core(rows: Sequence[tuple[object, ...]]) -> list[str
     )
 
 
+def source_lookup_chunks_core(source_keys: Sequence[str], *, chunk_size: int = 800) -> list[list[str]]:
+    safe_chunk_size = max(1, int(chunk_size))
+    keys = list(source_keys)
+    return [keys[idx: idx + safe_chunk_size] for idx in range(0, len(keys), safe_chunk_size)]
+
+
 def map_observation_rows_core(
     rows: Sequence[tuple[object, ...]],
     *,

@@ -30,6 +30,8 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
         confidence: str | None = None,
         updated_from: str | None = None,
         updated_to: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict[str, object]]:
         normalized_filters = observation_service.normalize_observation_filters_core(
             analyst=analyst,
@@ -42,40 +44,58 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             filters=normalized_filters,
         )
 
+        safe_limit: int | None = None
+        if limit is not None:
+            try:
+                safe_limit = max(1, min(500, int(limit)))
+            except Exception:
+                safe_limit = 100
+        try:
+            safe_offset = max(0, int(offset))
+        except Exception:
+            safe_offset = 0
+
         with sqlite3.connect(_db_path()) as connection:
             if not _actor_exists(connection, actor_id):
                 raise HTTPException(status_code=404, detail='actor not found')
-            rows = connection.execute(
-                f'''
+            query = (
+                '''
                 SELECT item_type, item_key, note, source_ref, confidence,
                        source_reliability, information_credibility, updated_by, updated_at
                 FROM analyst_observations
-                WHERE {where_sql}
-                ORDER BY updated_at DESC
-                ''',
-                params,
-            ).fetchall()
+                WHERE '''
+                + where_sql
+                + '\nORDER BY updated_at DESC'
+            )
+            query_params: list[object] = list(params)
+            if safe_limit is not None:
+                query += '\nLIMIT ? OFFSET ?'
+                query_params.extend([safe_limit, safe_offset])
+            rows = connection.execute(query, query_params).fetchall()
             source_keys = observation_service.observation_source_keys_core(rows)
             source_lookup: dict[str, dict[str, str]] = {}
             if source_keys:
-                placeholders = ','.join('?' for _ in source_keys)
-                source_rows = connection.execute(
-                    f'''
-                    SELECT id, source_name, url, title, published_at, retrieved_at
-                    FROM sources
-                    WHERE actor_id = ? AND id IN ({placeholders})
-                    ''',
-                    (actor_id, *source_keys),
-                ).fetchall()
-                source_lookup = {
-                    str(source_row[0]): {
-                        'source_name': str(source_row[1] or ''),
-                        'source_url': str(source_row[2] or ''),
-                        'source_title': str(source_row[3] or ''),
-                        'source_date': str(source_row[4] or source_row[5] or ''),
-                    }
-                    for source_row in source_rows
-                }
+                for key_chunk in observation_service.source_lookup_chunks_core(source_keys, chunk_size=800):
+                    placeholders = ','.join('?' for _ in key_chunk)
+                    source_rows = connection.execute(
+                        f'''
+                        SELECT id, source_name, url, title, published_at, retrieved_at
+                        FROM sources
+                        WHERE actor_id = ? AND id IN ({placeholders})
+                        ''',
+                        (actor_id, *key_chunk),
+                    ).fetchall()
+                    source_lookup.update(
+                        {
+                            str(source_row[0]): {
+                                'source_name': str(source_row[1] or ''),
+                                'source_url': str(source_row[2] or ''),
+                                'source_title': str(source_row[3] or ''),
+                                'source_date': str(source_row[4] or source_row[5] or ''),
+                            }
+                            for source_row in source_rows
+                        }
+                    )
         return observation_service.map_observation_rows_core(rows, source_lookup=source_lookup)
 
     @router.post(route_paths.ACTOR_NOTEBOOK_REQUIREMENTS_GENERATE)
@@ -259,6 +279,8 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
         confidence: str | None = None,
         updated_from: str | None = None,
         updated_to: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, object]:
         items = _fetch_analyst_observations(
             actor_id,
@@ -266,9 +288,13 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             confidence=confidence,
             updated_from=updated_from,
             updated_to=updated_to,
+            limit=limit,
+            offset=offset,
         )
         return {
             'actor_id': actor_id,
+            'limit': max(1, min(500, int(limit))),
+            'offset': max(0, int(offset)),
             'items': items,
         }
 
@@ -286,6 +312,8 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             confidence=confidence,
             updated_from=updated_from,
             updated_to=updated_to,
+            limit=None,
+            offset=0,
         )
         return {
             'actor_id': actor_id,
@@ -313,6 +341,8 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             confidence=confidence,
             updated_from=updated_from,
             updated_to=updated_to,
+            limit=None,
+            offset=0,
         )
         buffer = io.StringIO()
         writer = csv.writer(buffer)
