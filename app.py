@@ -257,11 +257,9 @@ def _request_body_limit_bytes(method: str, path: str) -> int:
     return rate_limit_service.request_body_limit_bytes_core(
         method,
         path,
-        deps={
-            'source_upload_body_limit_bytes': SOURCE_UPLOAD_BODY_LIMIT_BYTES,
-            'observation_body_limit_bytes': OBSERVATION_BODY_LIMIT_BYTES,
-            'default_body_limit_bytes': DEFAULT_BODY_LIMIT_BYTES,
-        },
+        SOURCE_UPLOAD_BODY_LIMIT_BYTES,
+        OBSERVATION_BODY_LIMIT_BYTES,
+        DEFAULT_BODY_LIMIT_BYTES,
     )
 
 
@@ -286,10 +284,8 @@ def _rate_limit_bucket(method: str, path: str) -> tuple[str, int] | None:
     return rate_limit_service.rate_limit_bucket_core(
         method,
         path,
-        deps={
-            'rate_limit_heavy_per_minute': RATE_LIMIT_HEAVY_PER_MINUTE,
-            'rate_limit_default_per_minute': RATE_LIMIT_DEFAULT_PER_MINUTE,
-        },
+        RATE_LIMIT_HEAVY_PER_MINUTE,
+        RATE_LIMIT_DEFAULT_PER_MINUTE,
     )
 
 
@@ -310,17 +306,15 @@ def _check_rate_limit(request: Request) -> tuple[bool, int, int]:
     counter_ref = {'value': _RATE_LIMIT_REQUEST_COUNTER}
     limited, retry_after, limit = rate_limit_service.check_rate_limit_core(
         request,
-        deps={
-            'rate_limit_enabled': RATE_LIMIT_ENABLED,
-            'rate_limit_window_seconds': RATE_LIMIT_WINDOW_SECONDS,
-            'rate_limit_state': _RATE_LIMIT_STATE,
-            'rate_limit_lock': _RATE_LIMIT_LOCK,
-            'rate_limit_cleanup_every': _RATE_LIMIT_CLEANUP_EVERY,
-            'rate_limit_request_counter_ref': counter_ref,
-            'rate_limit_bucket': _rate_limit_bucket,
-            'request_client_id': _request_client_id,
-            'prune_rate_limit_state': _prune_rate_limit_state,
-        },
+        rate_limit_enabled=RATE_LIMIT_ENABLED,
+        rate_limit_window_seconds=RATE_LIMIT_WINDOW_SECONDS,
+        rate_limit_state=_RATE_LIMIT_STATE,
+        rate_limit_lock=_RATE_LIMIT_LOCK,
+        rate_limit_cleanup_every=_RATE_LIMIT_CLEANUP_EVERY,
+        rate_limit_request_counter_ref=counter_ref,
+        rate_limit_bucket=_rate_limit_bucket,
+        request_client_id=_request_client_id,
+        prune_rate_limit_state=_prune_rate_limit_state,
     )
     _RATE_LIMIT_REQUEST_COUNTER = int(counter_ref['value'])
     return (limited, retry_after, limit)
@@ -835,12 +829,10 @@ def _compact_timeline_rows(
     return timeline_analytics_service.compact_timeline_rows_core(
         timeline_items,
         known_technique_ids,
-        deps={
-            'parse_iso_for_sort': _parse_iso_for_sort,
-            'short_date': _short_date,
-            'action_text': _action_text,
-            'severity_label': _severity_label,
-        },
+        parse_iso_for_sort=_parse_iso_for_sort,
+        short_date=_short_date,
+        action_text=_action_text,
+        severity_label=_severity_label,
     )
 
 

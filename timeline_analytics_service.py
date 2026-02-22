@@ -162,17 +162,15 @@ def compact_timeline_rows_core(
     timeline_items: list[dict[str, object]],
     known_technique_ids: set[str],
     *,
-    deps: dict[str, object],
+    parse_iso_for_sort,
+    short_date,
+    action_text,
+    severity_label,
 ) -> list[dict[str, object]]:
-    _parse_iso_for_sort = deps['parse_iso_for_sort']
-    _short_date = deps['short_date']
-    _action_text = deps['action_text']
-    _severity_label = deps['severity_label']
-
     rows: list[dict[str, object]] = []
     sorted_items = sorted(
         timeline_items,
-        key=lambda entry: _parse_iso_for_sort(str(entry.get('occurred_at') or '')),
+        key=lambda entry: parse_iso_for_sort(str(entry.get('occurred_at') or '')),
         reverse=True,
     )
     for item in sorted_items[:14]:
@@ -182,12 +180,12 @@ def compact_timeline_rows_core(
         target = str(item.get('target_text') or '')
         rows.append(
             {
-                'date': _short_date(str(item.get('occurred_at') or '')),
+                'date': short_date(str(item.get('occurred_at') or '')),
                 'category': category.replace('_', ' '),
-                'action': _action_text(category),
+                'action': action_text(category),
                 'target': target,
                 'techniques': ', '.join(ttp_ids),
-                'severity': _severity_label(category, target, novelty),
+                'severity': severity_label(category, target, novelty),
                 'summary': str(item.get('summary') or ''),
             }
         )
