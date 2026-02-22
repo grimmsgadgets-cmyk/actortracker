@@ -29,13 +29,12 @@ import routes_evolution
 import routes_notebook
 import routes_ui
 import source_ingest_service
+import source_store_service
 import status_service
 import timeline_extraction
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from actor_ingest import source_fingerprint as build_source_fingerprint
-from actor_ingest import upsert_source_for_actor
 from feed_ingest import import_default_feeds_for_actor_core as pipeline_import_default_feeds_for_actor_core
 from generation_runner import run_actor_generation_core as pipeline_run_actor_generation_core
 from network_safety import safe_http_get, validate_outbound_url
@@ -1780,7 +1779,7 @@ def _upsert_source_for_actor(
     publisher: str | None = None,
     site_name: str | None = None,
 ) -> str:
-    return upsert_source_for_actor(
+    return source_store_service.upsert_source_for_actor_core(
         connection=connection,
         actor_id=actor_id,
         source_name=source_name,
@@ -1794,9 +1793,11 @@ def _upsert_source_for_actor(
         html_title=html_title,
         publisher=publisher,
         site_name=site_name,
-        build_fingerprint=_source_fingerprint,
-        new_id=lambda: str(uuid.uuid4()),
-        now_iso=utc_now_iso,
+        deps={
+            'source_fingerprint': _source_fingerprint,
+            'new_id': lambda: str(uuid.uuid4()),
+            'now_iso': utc_now_iso,
+        },
     )
 
 
@@ -1811,14 +1812,16 @@ def _source_fingerprint(
     html_title: str | None,
     pasted_text: str,
 ) -> str:
-    return build_source_fingerprint(
-        title,
-        headline,
-        og_title,
-        html_title,
-        pasted_text,
-        normalize_text=_normalize_text,
-        first_sentences=lambda text, count: _first_sentences(text, count=count),
+    return source_store_service.source_fingerprint_core(
+        title=title,
+        headline=headline,
+        og_title=og_title,
+        html_title=html_title,
+        pasted_text=pasted_text,
+        deps={
+            'normalize_text': _normalize_text,
+            'first_sentences': lambda text, count: _first_sentences(text, count=count),
+        },
     )
 
 
