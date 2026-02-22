@@ -80,6 +80,47 @@ def test_build_notebook_wrapper_delegates_to_builder_core(monkeypatch):
     assert captured['rebuild_timeline'] is False
 
 
+def test_fetch_actor_notebook_wrapper_delegates_to_pipeline_core(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def _fake_fetch_core(actor_id, **kwargs):
+        captured['actor_id'] = actor_id
+        captured.update(kwargs)
+        return {'ok': True}
+
+    monkeypatch.setattr(app_module, 'pipeline_fetch_actor_notebook_core', _fake_fetch_core)
+
+    result = app_module._fetch_actor_notebook('actor-wrapper-test')  # noqa: SLF001
+
+    assert result == {'ok': True}
+    assert captured['actor_id'] == 'actor-wrapper-test'
+    assert captured['db_path'] == app_module.DB_PATH
+    deps = captured['deps']
+    assert isinstance(deps, dict)
+    assert 'build_recent_activity_highlights' in deps
+    assert 'build_notebook_kpis' in deps
+    assert 'format_date_or_unknown' in deps
+
+
+def test_fetch_actor_notebook_payload_shape_regression(tmp_path):
+    _setup_db(tmp_path)
+    actor = app_module.create_actor_profile('APT-Payload', 'Payload shape scope')
+
+    notebook = app_module._fetch_actor_notebook(actor['id'])  # noqa: SLF001
+
+    required_keys = {
+        'actor',
+        'recent_activity_highlights',
+        'priority_questions',
+        'kpis',
+    }
+    assert required_keys.issubset(notebook.keys())
+    assert isinstance(notebook['actor'], dict)
+    assert isinstance(notebook['recent_activity_highlights'], list)
+    assert isinstance(notebook['priority_questions'], list)
+    assert isinstance(notebook['kpis'], dict)
+
+
 def test_validate_outbound_url_blocks_localhost():
     with pytest.raises(app_module.HTTPException):
         app_module._validate_outbound_url('http://localhost/internal')  # noqa: SLF001

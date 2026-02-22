@@ -25,6 +25,7 @@ from actor_ingest import upsert_source_for_actor
 from network_safety import safe_http_get, validate_outbound_url
 from notebook_builder import build_notebook_core
 from notebook_pipeline import build_environment_checks as pipeline_build_environment_checks
+from notebook_pipeline import fetch_actor_notebook_core as pipeline_fetch_actor_notebook_core
 from notebook_pipeline import build_recent_activity_highlights as pipeline_build_recent_activity_highlights
 from notebook_pipeline import latest_reporting_recency_label as pipeline_latest_reporting_recency_label
 from notebook_pipeline import recent_change_summary as pipeline_recent_change_summary
@@ -3937,478 +3938,48 @@ def build_notebook(
 
 
 def _fetch_actor_notebook(actor_id: str) -> dict[str, object]:
-    with sqlite3.connect(DB_PATH) as connection:
-        actor_row = connection.execute(
-            '''
-            SELECT
-                id, display_name, scope_statement, created_at, is_tracked,
-                notebook_status, notebook_message, notebook_updated_at,
-                last_refresh_duration_ms, last_refresh_sources_processed
-            FROM actor_profiles
-            WHERE id = ?
-            ''',
-            (actor_id,),
-        ).fetchone()
-        if actor_row is None:
-            raise HTTPException(status_code=404, detail='actor not found')
-
-        sources = connection.execute(
-            '''
-            SELECT
-                id, source_name, url, published_at, retrieved_at, pasted_text,
-                title, headline, og_title, html_title, publisher, site_name
-            FROM sources
-            WHERE actor_id = ?
-            ORDER BY COALESCE(published_at, retrieved_at) DESC
-            ''',
-            (actor_id,),
-        ).fetchall()
-
-        timeline_rows = connection.execute(
-            '''
-            SELECT id, occurred_at, category, title, summary, source_id, target_text, ttp_ids_json
-            FROM timeline_events
-            WHERE actor_id = ?
-            ORDER BY occurred_at ASC
-            ''',
-            (actor_id,),
-        ).fetchall()
-
-        thread_rows = connection.execute(
-            '''
-            SELECT id, question_text, status, created_at, updated_at
-            FROM question_threads
-            WHERE actor_id = ?
-            ORDER BY updated_at DESC
-            ''',
-            (actor_id,),
-        ).fetchall()
-
-        updates_by_thread: dict[str, list[dict[str, object]]] = {}
-        for thread_row in thread_rows:
-            thread_id = thread_row[0]
-            update_rows = connection.execute(
-                '''
-                SELECT
-                    qu.id,
-                    qu.trigger_excerpt,
-                    qu.update_note,
-                    qu.created_at,
-                    s.source_name,
-                    s.url,
-                    s.published_at
-                FROM question_updates qu
-                JOIN sources s ON s.id = qu.source_id
-                WHERE qu.thread_id = ?
-                ORDER BY qu.created_at DESC
-                ''',
-                (thread_id,),
-            ).fetchall()
-            updates_by_thread[thread_id] = [
-                {
-                    'id': update_row[0],
-                    'trigger_excerpt': update_row[1],
-                    'update_note': update_row[2],
-                    'created_at': update_row[3],
-                    'source_name': update_row[4],
-                    'source_url': update_row[5],
-                    'source_published_at': update_row[6],
-                }
-                for update_row in update_rows
-            ]
-
-        guidance_rows = connection.execute(
-            '''
-            SELECT id, thread_id, platform, what_to_look_for, where_to_look, query_hint, created_at
-            FROM environment_guidance
-            WHERE actor_id = ?
-            ORDER BY created_at ASC
-            ''',
-            (actor_id,),
-        ).fetchall()
-        ioc_rows = connection.execute(
-            '''
-            SELECT id, ioc_type, ioc_value, source_ref, created_at
-            FROM ioc_items
-            WHERE actor_id = ?
-            ORDER BY created_at DESC
-            ''',
-            (actor_id,),
-        ).fetchall()
-        context_row = connection.execute(
-            '''
-            SELECT org_context, priority_mode, updated_at
-            FROM requirement_context
-            WHERE actor_id = ?
-            ''',
-            (actor_id,),
-        ).fetchone()
-        requirement_rows = connection.execute(
-            '''
-            SELECT id, req_type, requirement_text, rationale_text,
-                   source_name, source_url, source_published_at,
-                   validation_score, validation_notes,
-                   status, created_at
-            FROM requirement_items
-            WHERE actor_id = ?
-            ORDER BY created_at DESC
-            ''',
-            (actor_id,),
-        ).fetchall()
-
-        guidance_by_thread: dict[str, list[dict[str, object]]] = {}
-        for row in guidance_rows:
-            guidance_by_thread.setdefault(row[1], []).append(
-                {
-                    'id': row[0],
-                    'platform': row[2],
-                    'what_to_look_for': row[3],
-                    'where_to_look': row[4],
-                    'query_hint': row[5],
-                    'created_at': row[6],
-                }
-            )
-
-    actor = {
-        'id': actor_row[0],
-        'display_name': actor_row[1],
-        'scope_statement': actor_row[2],
-        'created_at': actor_row[3],
-        'is_tracked': bool(actor_row[4]),
-        'notebook_status': actor_row[5],
-        'notebook_message': actor_row[6],
-        'notebook_updated_at': actor_row[7],
-        'last_refresh_duration_ms': actor_row[8],
-        'last_refresh_sources_processed': actor_row[9],
-    }
-    timeline_items: list[dict[str, object]] = [
-        {
-            'id': row[0],
-            'occurred_at': row[1],
-            'category': row[2],
-            'title': row[3],
-            'summary': row[4],
-            'source_id': row[5],
-            'target_text': row[6],
-            'ttp_ids': _safe_json_string_list(row[7]),
-        }
-        for row in timeline_rows
-    ]
-    cutoff_90 = datetime.now(timezone.utc) - timedelta(days=90)
-    timeline_recent_items = [
-        item
-        for item in timeline_items
-        if (
-            (dt := _parse_published_datetime(str(item.get('occurred_at') or ''))) is not None
-            and dt >= cutoff_90
-        )
-    ]
-
-    thread_items: list[dict[str, object]] = []
-    for row in thread_rows:
-        thread_items.append(
-            {
-                'id': row[0],
-                'question_text': row[1],
-                'status': row[2],
-                'created_at': row[3],
-                'updated_at': row[4],
-                'updates': updates_by_thread.get(row[0], []),
-            }
-        )
-
-    open_thread_ids = [thread['id'] for thread in thread_items if thread['status'] == 'open']
-    guidance_for_open = [
-        {
-            'thread_id': thread_id,
-            'question_text': next(item['question_text'] for item in thread_items if item['id'] == thread_id),
-            'guidance_items': guidance_by_thread.get(thread_id, []),
-        }
-        for thread_id in open_thread_ids
-    ]
-    priority_questions: list[dict[str, object]] = []
-    open_threads = [thread for thread in thread_items if thread['status'] == 'open']
-    actor_categories = _actor_signal_categories(timeline_recent_items)
-    signal_text = ' '.join(
-        [
-            str(item.get('summary') or '')
-            for item in timeline_recent_items
-        ]
-    ).lower()
-    org_context_text = str(context_row[0]) if context_row and context_row[0] else ''
-    scored_threads: list[dict[str, object]] = []
-    for thread in open_threads:
-        question_text = str(thread.get('question_text') or '')
-        relevance = _question_actor_relevance(question_text, actor_categories, signal_text)
-        if relevance <= 0:
-            continue
-        updates = thread.get('updates', [])
-        updates_list = updates if isinstance(updates, list) else []
-        evidence_dts = [
-            dt
-            for dt in (
-                _priority_update_evidence_dt(update)
-                for update in updates_list
-                if isinstance(update, dict)
-            )
-            if dt is not None
-        ]
-        latest_evidence_dt = max(evidence_dts) if evidence_dts else None
-        corroborating_sources = len(
-            {
-                str(update.get('source_url') or update.get('source_name') or '').strip().lower()
-                for update in updates_list
-                if isinstance(update, dict)
-                and str(update.get('source_url') or update.get('source_name') or '').strip()
-            }
-        )
-        org_alignment = _question_org_alignment(question_text, org_context_text)
-        rank_score = _priority_rank_score(
-            thread,
-            relevance,
-            latest_evidence_dt,
-            corroborating_sources,
-            org_alignment,
-        )
-        scored_threads.append(
-            {
-                'thread': thread,
-                'relevance': relevance,
-                'rank_score': rank_score,
-                'latest_evidence_dt': latest_evidence_dt,
-                'corroborating_sources': corroborating_sources,
-                'org_alignment': org_alignment,
-            }
-        )
-
-    sorted_scored_threads = sorted(
-        scored_threads,
-        key=lambda item: (
-            int(item['rank_score']),
-            item['latest_evidence_dt'] or datetime.min.replace(tzinfo=timezone.utc),
-        ),
-        reverse=True,
-    )
-    for scored in sorted_scored_threads:
-        thread = scored['thread']
-        question_text = str(thread.get('question_text') or '')
-        relevance = int(scored['relevance'])
-        rank_score = int(scored['rank_score'])
-        updates = thread.get('updates', [])
-        updates_list = updates if isinstance(updates, list) else []
-        latest_update = updates_list[0] if updates_list and isinstance(updates_list[0], dict) else None
-        latest_excerpt = str(latest_update.get('trigger_excerpt') or '') if isinstance(latest_update, dict) else ''
-        latest_excerpt = ' '.join(latest_excerpt.split())
-        if len(latest_excerpt) > 180:
-            latest_excerpt = latest_excerpt[:180].rsplit(' ', 1)[0] + '...'
-        if rank_score >= 10:
-            priority = 'High'
-        elif rank_score >= 7:
-            priority = 'Medium'
-        else:
-            priority = 'Low'
-        guidance_items = guidance_by_thread.get(str(thread['id']), [])
-        updates_count = len(updates_list)
-        phase_label = _phase_label_for_question(question_text)
-        where_to_check = _priority_where_to_check(guidance_items, question_text)
-        confidence = _priority_confidence_label(updates_count, relevance, latest_excerpt)
-        priority_questions.append(
-            {
-                'id': thread['id'],
-                'question_text': question_text,
-                'phase_label': phase_label,
-                'quick_check_title': _quick_check_title(question_text, phase_label),
-                'decision_trigger': _short_decision_trigger(question_text),
-                'telemetry_anchor': _telemetry_anchor_line(guidance_items, question_text),
-                'first_step': _priority_next_best_action(question_text, where_to_check),
-                'what_to_look_for': _guidance_line(guidance_items, 'what_to_look_for'),
-                'query_hint': _guidance_query_hint(guidance_items, question_text),
-                'success_condition': _priority_disconfirming_signal(question_text),
-                'escalation_threshold': _escalation_threshold_line(question_text),
-                'priority': priority,
-                'confidence': confidence,
-                'evidence_recency': _priority_update_recency_label(
-                    scored['latest_evidence_dt'] if isinstance(scored['latest_evidence_dt'], datetime) else None
-                ),
-                'corroborating_sources': int(scored['corroborating_sources']),
-                'org_alignment': _org_alignment_label(int(scored.get('org_alignment') or 0)),
-                'updates_count': updates_count,
-                'updated_at': thread['updated_at'],
-            }
-        )
-        if len(priority_questions) >= 5:
-            break
-
-    if len(priority_questions) < 3:
-        fallback_items = _fallback_priority_questions(str(actor['display_name']), actor_categories)
-        for idx, item in enumerate(fallback_items, start=1):
-            fallback_question_text = str(item['question_text'])
-            if any(
-                _token_overlap(str(existing.get('question_text') or ''), fallback_question_text) >= 0.7
-                for existing in priority_questions
-            ):
-                continue
-            priority_questions.append(
-                {
-                    'id': f'fallback-{idx}',
-                    'question_text': fallback_question_text,
-                    'phase_label': _phase_label_for_question(fallback_question_text),
-                    'quick_check_title': _quick_check_title(
-                        fallback_question_text,
-                        _phase_label_for_question(fallback_question_text),
-                    ),
-                    'decision_trigger': _short_decision_trigger(fallback_question_text),
-                    'telemetry_anchor': f'Anchor: {str(item["where_to_check"])}.',
-                    'first_step': _priority_next_best_action(fallback_question_text, str(item['where_to_check'])),
-                    'what_to_look_for': str(item.get('hunt_focus') or ''),
-                    'query_hint': f'Start in: {str(item["where_to_check"])}.',
-                    'success_condition': str(item.get('disconfirming_signal') or ''),
-                    'escalation_threshold': _escalation_threshold_line(fallback_question_text),
-                    'priority': str(item['priority']),
-                    'confidence': str(item.get('confidence') or 'Low'),
-                    'evidence_recency': 'Evidence recency unknown',
-                    'corroborating_sources': 0,
-                    'org_alignment': 'Unknown',
-                    'updates_count': 0,
-                    'updated_at': '',
-                }
-            )
-            if len(priority_questions) >= 5:
-                break
-
-    phase_group_order: list[str] = []
-    phase_groups_map: dict[str, list[dict[str, object]]] = {}
-    for card in priority_questions:
-        phase = str(card.get('phase_label') or 'Operational Signal')
-        if phase not in phase_groups_map:
-            phase_groups_map[phase] = []
-            phase_group_order.append(phase)
-        phase_groups_map[phase].append(card)
-    priority_phase_groups = [{'phase': phase, 'cards': phase_groups_map[phase]} for phase in phase_group_order]
-
-    source_items = [
-        {
-            'id': row[0],
-            'source_name': row[1],
-            'url': row[2],
-            'published_at': row[3],
-            'retrieved_at': row[4],
-            'pasted_text': row[5],
-            'title': row[6],
-            'headline': row[7],
-            'og_title': row[8],
-            'html_title': row[9],
-            'publisher': row[10],
-            'site_name': row[11],
-        }
-        for row in sources
-    ]
-    mitre_profile = _build_actor_profile_from_mitre(str(actor['display_name']))
-    actor_profile_summary = str(mitre_profile['summary'])
-    top_techniques = _group_top_techniques(str(mitre_profile.get('stix_id') or ''))
-    favorite_vectors = _favorite_attack_vectors(top_techniques)
-    known_technique_ids = _known_technique_ids_for_entity(str(mitre_profile.get('stix_id') or ''))
-    if not known_technique_ids:
-        known_technique_ids = {
-            str(item.get('technique_id') or '').upper()
-            for item in top_techniques
-            if item.get('technique_id')
-        }
-    emerging_techniques = _emerging_techniques_from_timeline(timeline_recent_items, known_technique_ids)
-    emerging_technique_ids = [str(item.get('technique_id') or '') for item in emerging_techniques]
-    emerging_techniques_with_dates = [
-        {
-            'technique_id': str(item.get('technique_id') or ''),
-            'first_seen': str(item.get('first_seen') or ''),
-        }
-        for item in emerging_techniques
-    ]
-    timeline_graph = _build_timeline_graph(timeline_recent_items)
-    timeline_compact_rows = _compact_timeline_rows(timeline_items, known_technique_ids)
-    actor_terms = _actor_terms(
-        str(actor['display_name']),
-        str(mitre_profile.get('group_name') or ''),
-        str(mitre_profile.get('aliases_csv') or ''),
-    )
-    recent_activity_highlights = _build_recent_activity_highlights(timeline_items, source_items, actor_terms)
-    recent_activity_synthesis = _build_recent_activity_synthesis(recent_activity_highlights)
-    recent_change_summary = _recent_change_summary(timeline_recent_items, recent_activity_highlights, source_items)
-    environment_checks = _build_environment_checks(
-        timeline_recent_items,
-        recent_activity_highlights,
-        top_techniques,
-    )
-    notebook_kpis = _build_notebook_kpis(
-        timeline_items,
-        known_technique_ids,
-        len(open_thread_ids),
-        source_items,
-    )
-
-    return {
-        'actor': actor,
-        'sources': source_items,
-        'timeline_items': timeline_items,
-        'timeline_recent_items': timeline_recent_items,
-        'timeline_window_label': 'Last 90 days',
-        'threads': thread_items,
-        'guidance_for_open': guidance_for_open,
-        'actor_profile_summary': actor_profile_summary,
-        'actor_profile_source_label': str(mitre_profile['source_label']),
-        'actor_profile_source_url': str(mitre_profile['source_url']),
-        'actor_profile_group_name': str(mitre_profile['group_name']),
-        'actor_created_date': _format_date_or_unknown(str(actor.get('created_at') or '')),
-        'favorite_vectors': favorite_vectors,
-        'top_techniques': top_techniques,
-        'emerging_techniques': emerging_techniques,
-        'emerging_technique_ids': emerging_technique_ids,
-        'emerging_techniques_with_dates': emerging_techniques_with_dates,
-        'timeline_graph': timeline_graph,
-        'timeline_compact_rows': timeline_compact_rows,
-        'recent_activity_highlights': recent_activity_highlights,
-        'recent_activity_synthesis': recent_activity_synthesis,
-        'recent_change_summary': recent_change_summary,
-        'environment_checks': environment_checks,
-        'kpis': notebook_kpis,
-        'ioc_items': [
-            {
-                'id': row[0],
-                'ioc_type': row[1],
-                'ioc_value': row[2],
-                'source_ref': row[3],
-                'created_at': row[4],
-            }
-            for row in ioc_rows
-        ],
-        'requirements_context': {
-            'org_context': str(context_row[0]) if context_row else '',
-            'priority_mode': str(context_row[1]) if context_row else 'Operational',
-            'updated_at': str(context_row[2]) if context_row and context_row[2] else '',
+    return pipeline_fetch_actor_notebook_core(
+        actor_id,
+        db_path=DB_PATH,
+        deps={
+            'parse_published_datetime': _parse_published_datetime,
+            'safe_json_string_list': _safe_json_string_list,
+            'actor_signal_categories': _actor_signal_categories,
+            'question_actor_relevance': _question_actor_relevance,
+            'priority_update_evidence_dt': _priority_update_evidence_dt,
+            'question_org_alignment': _question_org_alignment,
+            'priority_rank_score': _priority_rank_score,
+            'phase_label_for_question': _phase_label_for_question,
+            'priority_where_to_check': _priority_where_to_check,
+            'priority_confidence_label': _priority_confidence_label,
+            'quick_check_title': _quick_check_title,
+            'short_decision_trigger': _short_decision_trigger,
+            'telemetry_anchor_line': _telemetry_anchor_line,
+            'priority_next_best_action': _priority_next_best_action,
+            'guidance_line': _guidance_line,
+            'guidance_query_hint': _guidance_query_hint,
+            'priority_disconfirming_signal': _priority_disconfirming_signal,
+            'escalation_threshold_line': _escalation_threshold_line,
+            'priority_update_recency_label': _priority_update_recency_label,
+            'org_alignment_label': _org_alignment_label,
+            'fallback_priority_questions': _fallback_priority_questions,
+            'token_overlap': _token_overlap,
+            'build_actor_profile_from_mitre': _build_actor_profile_from_mitre,
+            'group_top_techniques': _group_top_techniques,
+            'favorite_attack_vectors': _favorite_attack_vectors,
+            'known_technique_ids_for_entity': _known_technique_ids_for_entity,
+            'emerging_techniques_from_timeline': _emerging_techniques_from_timeline,
+            'build_timeline_graph': _build_timeline_graph,
+            'compact_timeline_rows': _compact_timeline_rows,
+            'actor_terms': _actor_terms,
+            'build_recent_activity_highlights': _build_recent_activity_highlights,
+            'build_recent_activity_synthesis': _build_recent_activity_synthesis,
+            'recent_change_summary': _recent_change_summary,
+            'build_environment_checks': _build_environment_checks,
+            'build_notebook_kpis': _build_notebook_kpis,
+            'format_date_or_unknown': _format_date_or_unknown,
         },
-        'requirements': [
-            {
-                'id': row[0],
-                'req_type': row[1],
-                'requirement_text': row[2],
-                'rationale_text': row[3],
-                'source_name': row[4],
-                'source_url': row[5],
-                'source_published_at': row[6],
-                'validation_score': row[7],
-                'validation_notes': row[8],
-                'status': row[9],
-                'created_at': row[10],
-            }
-            for row in requirement_rows
-        ],
-        'priority_questions': priority_questions,
-        'priority_phase_groups': priority_phase_groups,
-        'counts': {
-            'sources': len(sources),
-            'timeline_events': len(timeline_rows),
-            'open_questions': len(open_thread_ids),
-        },
-    }
+    )
 
 
 def initialize_sqlite() -> None:
