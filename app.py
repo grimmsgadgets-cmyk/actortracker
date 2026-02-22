@@ -1,6 +1,4 @@
 import html
-import hashlib
-import ipaddress
 import json
 import os
 import re
@@ -16,12 +14,15 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from threading import Lock
-from urllib.parse import parse_qs, quote, quote_plus, urljoin, urlparse
+from urllib.parse import parse_qs, quote, quote_plus, urlparse
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from actor_ingest import source_fingerprint as build_source_fingerprint
+from actor_ingest import upsert_source_for_actor
+from network_safety import safe_http_get, validate_outbound_url
 
 
 @asynccontextmanager
@@ -3167,58 +3168,14 @@ def _canonical_group_domain(source: dict[str, object]) -> str:
     return host or 'unknown-source'
 
 
-def _is_blocked_outbound_ip(ip_value: str) -> bool:
-    try:
-        ip_addr = ipaddress.ip_address(ip_value)
-    except ValueError:
-        return True
-    return (
-        ip_addr.is_private
-        or ip_addr.is_loopback
-        or ip_addr.is_link_local
-        or ip_addr.is_multicast
-        or ip_addr.is_reserved
-        or ip_addr.is_unspecified
-    )
-
-
-def _host_matches_allowed_domains(hostname: str, allowed_domains: set[str]) -> bool:
-    return any(hostname == domain or hostname.endswith(f'.{domain}') for domain in allowed_domains)
-
-
 def _validate_outbound_url(source_url: str, allowed_domains: set[str] | None = None) -> str:
-    normalized = source_url.strip()
-    parsed = urlparse(normalized)
-    if parsed.scheme.lower() not in {'http', 'https'}:
-        raise HTTPException(status_code=400, detail='source_url must use http or https')
-    if parsed.username or parsed.password:
-        raise HTTPException(status_code=400, detail='source_url must not include credentials')
-
-    hostname = (parsed.hostname or '').strip('.').lower()
-    if not hostname:
-        raise HTTPException(status_code=400, detail='source_url must include a valid hostname')
-    if hostname == 'localhost' or hostname.endswith('.localhost'):
-        raise HTTPException(status_code=400, detail='source_url points to a blocked host')
-
     effective_allowlist = OUTBOUND_ALLOWED_DOMAINS if allowed_domains is None else allowed_domains
-    if effective_allowlist and not _host_matches_allowed_domains(hostname, effective_allowlist):
-        raise HTTPException(status_code=400, detail='source_url domain is not allowed')
-
-    try:
-        addr_infos = socket.getaddrinfo(
-            hostname,
-            parsed.port or (443 if parsed.scheme.lower() == 'https' else 80),
-            proto=socket.IPPROTO_TCP,
-        )
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=f'failed to resolve source_url host: {exc}') from exc
-
-    for addr_info in addr_infos:
-        resolved_ip = str(addr_info[4][0])
-        if _is_blocked_outbound_ip(resolved_ip):
-            raise HTTPException(status_code=400, detail='source_url resolves to a blocked IP range')
-
-    return normalized
+    return validate_outbound_url(
+        source_url,
+        allowed_domains=effective_allowlist,
+        resolve_host=socket.getaddrinfo,
+        ipproto_tcp=socket.IPPROTO_TCP,
+    )
 
 
 def _safe_http_get(
@@ -3229,22 +3186,15 @@ def _safe_http_get(
     allowed_domains: set[str] | None = None,
     max_redirects: int = 3,
 ) -> httpx.Response:
-    current_url = _validate_outbound_url(source_url, allowed_domains=allowed_domains)
-    for _ in range(max_redirects + 1):
-        response = httpx.get(
-            current_url,
-            timeout=timeout,
-            follow_redirects=False,
-            headers=headers,
-        )
-        if not response.is_redirect:
-            return response
-        location = response.headers.get('location')
-        if not location:
-            return response
-        next_url = urljoin(str(response.url), location)
-        current_url = _validate_outbound_url(next_url, allowed_domains=allowed_domains)
-    raise HTTPException(status_code=400, detail='too many redirects while fetching source_url')
+    return safe_http_get(
+        source_url,
+        timeout=timeout,
+        headers=headers,
+        allowed_domains=allowed_domains,
+        max_redirects=max_redirects,
+        validate_url=lambda url, domains: _validate_outbound_url(url, allowed_domains=domains),
+        http_get=httpx.get,
+    )
 
 
 def derive_source_from_url(source_url: str, fallback_source_name: str | None = None, published_hint: str | None = None) -> dict[str, str | None]:
@@ -4021,90 +3971,24 @@ def _upsert_source_for_actor(
     publisher: str | None = None,
     site_name: str | None = None,
 ) -> str:
-    fingerprint = _source_fingerprint(title, headline, og_title, html_title, pasted_text)
-    existing = connection.execute(
-        'SELECT id FROM sources WHERE actor_id = ? AND url = ?',
-        (actor_id, source_url),
-    ).fetchone()
-    if existing is not None:
-        metadata_values = [title, headline, og_title, html_title, publisher, site_name]
-        if any(str(value or '').strip() for value in metadata_values):
-            connection.execute(
-                '''
-                UPDATE sources
-                SET title = COALESCE(NULLIF(title, ''), ?),
-                    headline = COALESCE(NULLIF(headline, ''), ?),
-                    og_title = COALESCE(NULLIF(og_title, ''), ?),
-                    html_title = COALESCE(NULLIF(html_title, ''), ?),
-                    publisher = COALESCE(NULLIF(publisher, ''), ?),
-                    site_name = COALESCE(NULLIF(site_name, ''), ?)
-                WHERE id = ?
-                ''',
-                (
-                    str(title or '').strip() or None,
-                    str(headline or '').strip() or None,
-                    str(og_title or '').strip() or None,
-                    str(html_title or '').strip() or None,
-                    str(publisher or '').strip() or None,
-                    str(site_name or '').strip() or None,
-                    existing[0],
-                ),
-            )
-        if fingerprint:
-            connection.execute(
-                '''
-                UPDATE sources
-                SET source_fingerprint = COALESCE(NULLIF(source_fingerprint, ''), ?)
-                WHERE id = ?
-                ''',
-                (fingerprint, existing[0]),
-            )
-        return existing[0]
-
-    if fingerprint:
-        fingerprint_existing = connection.execute(
-            '''
-            SELECT id
-            FROM sources
-            WHERE actor_id = ? AND source_fingerprint = ?
-            LIMIT 1
-            ''',
-            (actor_id, fingerprint),
-        ).fetchone()
-        if fingerprint_existing is not None:
-            return str(fingerprint_existing[0])
-
-    final_text = pasted_text
-    if trigger_excerpt and trigger_excerpt not in final_text:
-        final_text = f'{trigger_excerpt}\n\n{pasted_text}'
-
-    source_id = str(uuid.uuid4())
-    connection.execute(
-        '''
-        INSERT INTO sources (
-            id, actor_id, source_name, url, published_at, retrieved_at, pasted_text,
-            source_fingerprint, title, headline, og_title, html_title, publisher, site_name
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''',
-        (
-            source_id,
-            actor_id,
-            source_name,
-            source_url,
-            published_at,
-            utc_now_iso(),
-            final_text,
-            fingerprint or None,
-            str(title or '').strip() or None,
-            str(headline or '').strip() or None,
-            str(og_title or '').strip() or None,
-            str(html_title or '').strip() or None,
-            str(publisher or '').strip() or None,
-            str(site_name or '').strip() or None,
-        ),
+    return upsert_source_for_actor(
+        connection=connection,
+        actor_id=actor_id,
+        source_name=source_name,
+        source_url=source_url,
+        published_at=published_at,
+        pasted_text=pasted_text,
+        trigger_excerpt=trigger_excerpt,
+        title=title,
+        headline=headline,
+        og_title=og_title,
+        html_title=html_title,
+        publisher=publisher,
+        site_name=site_name,
+        build_fingerprint=_source_fingerprint,
+        new_id=lambda: str(uuid.uuid4()),
+        now_iso=utc_now_iso,
     )
-    return source_id
 
 
 def _parse_ioc_values(raw: str) -> list[str]:
@@ -4126,19 +4010,15 @@ def _source_fingerprint(
     html_title: str | None,
     pasted_text: str,
 ) -> str:
-    title_candidate = (
-        str(title or '').strip()
-        or str(headline or '').strip()
-        or str(og_title or '').strip()
-        or str(html_title or '').strip()
+    return build_source_fingerprint(
+        title,
+        headline,
+        og_title,
+        html_title,
+        pasted_text,
+        normalize_text=_normalize_text,
+        first_sentences=lambda text, count: _first_sentences(text, count=count),
     )
-    normalized_title = _normalize_text(title_candidate)[:220]
-    excerpt = _first_sentences(pasted_text or '', count=2)
-    normalized_excerpt = _normalize_text(excerpt)[:420]
-    if not normalized_title and not normalized_excerpt:
-        return ''
-    raw = f'{normalized_title}|{normalized_excerpt}'
-    return hashlib.sha1(raw.encode('utf-8')).hexdigest()
 
 
 def import_default_feeds_for_actor(actor_id: str) -> int:
