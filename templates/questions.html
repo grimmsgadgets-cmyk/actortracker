@@ -40,7 +40,7 @@
           <ul>
             <li>Start with open threads that have the newest updates.</li>
             <li>Use “Where to look” and “What to look for” as your first hunt checklist.</li>
-            <li>Resolve a thread only after evidence confirms the question is answered.</li>
+            <li>Mark a thread documented after you record the current assessment and caveats.</li>
           </ul>
         </div>
       </div>
@@ -66,7 +66,7 @@
           {% if thread.status == 'open' %}
           <form method="post" action="/questions/{{ thread.id }}/resolve">
             <input type="hidden" name="actor_id" value="{{ actor_id }}" />
-            <button type="submit">Resolve</button>
+            <button type="submit">Mark documented</button>
           </form>
           {% endif %}
 

@@ -325,7 +325,7 @@
               {% if req.status == 'open' %}
               <form method="post" action="/requirements/{{ req.id }}/resolve">
                 <input type="hidden" name="actor_id" value="{{ notebook.actor.id }}" />
-                <button type="submit">Resolve</button>
+                <button type="submit">Mark documented</button>
               </form>
               {% endif %}
             </div>
@@ -591,9 +591,9 @@
                   <small class="source-meta">{{ item.evidence_source_label or item.source_name or 'Unknown source' }} | corroboration: {{ item.corroboration_sources or '1' }} source(s)</small>
                   {% set all_observation_key = item.source_id or item.timeline_event_id or ('all-highlight-' ~ loop.index0) %}
                   <details class="compact source-note-toggle">
-                    <summary>Analyst observation (optional)</summary>
+                    <summary>Quick note (optional)</summary>
                     <div class="interactive-panel" data-observation-item-type="source" data-observation-item-key="{{ all_observation_key }}">
-                      <p class="inline-note" style="margin:0 0 6px;"><strong>Reference format:</strong> note + confidence + source reliability (A-F) + information credibility (1-6).</p>
+                      <p class="inline-note" style="margin:0 0 6px;">Use this for a short historical note. Full structured entry is in <strong>Latest 3 sources</strong>.</p>
                       <div class="obs-row">
                         <div>
                           <label>Analyst</label>
@@ -607,35 +607,7 @@
                             <option value="low">Low</option>
                           </select>
                         </div>
-                        <div>
-                          <label>Source reliability (A-F)</label>
-                          <select class="observation-source-reliability">
-                            <option value="">n/a</option>
-                            <option value="A">A</option>
-                            <option value="B">B</option>
-                            <option value="C">C</option>
-                            <option value="D">D</option>
-                            <option value="E">E</option>
-                            <option value="F">F</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label>Info credibility (1-6)</label>
-                          <select class="observation-information-credibility">
-                            <option value="">n/a</option>
-                            <option value="1">1</option>
-                            <option value="2">2</option>
-                            <option value="3">3</option>
-                            <option value="4">4</option>
-                            <option value="5">5</option>
-                            <option value="6">6</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label>Source reference (optional)</label>
-                          <input type="text" class="observation-source-ref" placeholder="report id, tweet id, case link..." />
-                        </div>
-                        <textarea class="observation-note" placeholder="Historical context, pattern shift, or caveats..."></textarea>
+                        <textarea class="observation-note" placeholder="What changed vs prior assessment for this source?"></textarea>
                       </div>
                       <div class="obs-actions">
                         <button type="button" class="observation-save">Save observation</button>
@@ -730,7 +702,7 @@
         </section>
 
         <section class="card span-2" data-step="action" id="section-history">
-          <h2 class="section-title">3) Analyst Interpretation Over Time</h2>
+          <h2 class="section-title">3) Record & Compare Assessment</h2>
           <p class="deemphasized" style="margin:0 0 8px;">
             Capture and review source-linked observations to track how assessment evolves over time.
           </p>
@@ -797,19 +769,19 @@
         {% if notebook.priority_questions %}
         <section class="card span-2 decision-queue" data-step="action">
           <div class="decision-header">
-            <h2 class="section-title" style="margin:0;">Historical Analysis Prompts (optional)</h2>
+            <h2 class="section-title" style="margin:0;">Assessment Comparison Prompts (optional)</h2>
             <a href="/actors/{{ notebook.actor.id }}/questions">Open workspace</a>
           </div>
           <p class="deemphasized" style="margin:0 0 8px;">
-            Use these prompts to deepen context and compare this cycle against prior reporting.
+            Use these prompts to compare current reporting to prior assessment and record what changed.
           </p>
           <details class="compact">
             <summary>How to use these prompts (optional)</summary>
             <div class="helper-box">
               <ul>
                 <li>Work top-to-bottom on the first 1-3 prompts.</li>
-                <li>Capture what changed from prior assessment in source-linked observations.</li>
-                <li>Record uncertainty explicitly when evidence is incomplete or mixed.</li>
+                <li>Capture what changed from the last review in source-linked observations.</li>
+                <li>Record confidence shifts and explicit caveats when evidence is mixed.</li>
               </ul>
             </div>
           </details>
@@ -821,22 +793,9 @@
                 <span class="pbadge {{ question.priority.lower() }}">{{ question.priority }}</span>
               </summary>
               <div class="dq-detail">
-                <div class="dq-line"><strong>Assessment question:</strong> {{ question.decision_trigger }}</div>
-                <div class="dq-line"><strong>Starting angle:</strong> {{ question.first_step or question.telemetry_anchor }}</div>
-                {% if question.query_hint %}
-                <div class="dq-line"><strong>Suggested query:</strong> {{ question.query_hint }}</div>
-                {% endif %}
-                {% if question.what_to_look_for %}
-                <div class="dq-line"><strong>Evidence to compare:</strong> {{ question.what_to_look_for }}</div>
-                {% endif %}
-                <div class="dq-line"><strong>Confidence threshold:</strong> {{ question.escalation_threshold }}</div>
-                {% if question.success_condition %}
-                <div class="dq-line"><strong>Alternative interpretation:</strong> {{ question.success_condition }}</div>
-                {% endif %}
-                <div class="dq-line"><strong>Evidence quality:</strong> {{ question.confidence }} | {{ question.evidence_recency }} | corroboration: {{ question.corroborating_sources }} source(s) | org fit: {{ question.org_alignment }}</div>
-                {% if question.updated_at %}
-                <div class="dq-line"><strong>Last signal update:</strong> {{ question.updated_at }}</div>
-                {% endif %}
+                <div class="dq-line"><strong>Where to check first:</strong> {{ question.first_step or question.telemetry_anchor }}</div>
+                <div class="dq-line"><strong>Signal to confirm or deny:</strong> {{ question.what_to_look_for or question.success_condition or question.decision_trigger }}</div>
+                <div class="dq-line"><strong>What to record:</strong> {{ question.confidence_change_threshold or question.escalation_threshold }} | confidence: {{ question.confidence }} | recency: {{ question.evidence_recency }} | corroboration: {{ question.corroborating_sources }} source(s)</div>
               </div>
             </details>
             {% endfor %}

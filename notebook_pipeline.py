@@ -526,7 +526,7 @@ def fetch_actor_notebook_core(
     _guidance_line = deps['guidance_line']
     _guidance_query_hint = deps['guidance_query_hint']
     _priority_disconfirming_signal = deps['priority_disconfirming_signal']
-    _escalation_threshold_line = deps['escalation_threshold_line']
+    _confidence_change_threshold_line = deps.get('confidence_change_threshold_line', deps['escalation_threshold_line'])
     _priority_update_recency_label = deps['priority_update_recency_label']
     _org_alignment_label = deps['org_alignment_label']
     _fallback_priority_questions = deps['fallback_priority_questions']
@@ -828,7 +828,8 @@ def fetch_actor_notebook_core(
                 'what_to_look_for': _guidance_line(guidance_items, 'what_to_look_for'),
                 'query_hint': _guidance_query_hint(guidance_items, question_text),
                 'success_condition': _priority_disconfirming_signal(question_text),
-                'escalation_threshold': _escalation_threshold_line(question_text),
+                'confidence_change_threshold': _confidence_change_threshold_line(question_text),
+                'escalation_threshold': _confidence_change_threshold_line(question_text),
                 'priority': priority,
                 'confidence': confidence,
                 'evidence_recency': _priority_update_recency_label(
@@ -867,7 +868,8 @@ def fetch_actor_notebook_core(
                     'what_to_look_for': str(item.get('hunt_focus') or ''),
                     'query_hint': f'Start in: {str(item["where_to_check"])}.',
                     'success_condition': str(item.get('disconfirming_signal') or ''),
-                    'escalation_threshold': _escalation_threshold_line(fallback_question_text),
+                    'confidence_change_threshold': _confidence_change_threshold_line(fallback_question_text),
+                    'escalation_threshold': _confidence_change_threshold_line(fallback_question_text),
                     'priority': str(item['priority']),
                     'confidence': str(item.get('confidence') or 'Low'),
                     'evidence_recency': 'Evidence recency unknown',

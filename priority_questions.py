@@ -120,11 +120,11 @@ def fallback_priority_questions(actor_name: str, actor_categories: set[str]) -> 
     if not catalog:
         catalog.append(
             {
-                'question_text': 'What evidence would justify escalating from monitoring to active incident response?',
+                'question_text': 'What changed in telemetry that increases confidence this actor is active in our environment?',
                 'priority': 'Medium',
-                'know_focus': f'{actor_name} reporting is limited, so escalation thresholds must rely on concrete local evidence.',
+                'know_focus': f'{actor_name} reporting is limited, so confidence shifts should rely on concrete local evidence.',
                 'hunt_focus': 'Hunt for corroborating endpoint and network alerts tied to actor-reported techniques.',
-                'decision_to_inform': 'Decide escalation threshold for incident declaration and responder activation.',
+                'decision_to_inform': 'Decide whether confidence should move up, down, or remain unchanged based on corroborated signals.',
                 'where_to_check': 'EDR, Windows Event Logs, DNS/Proxy',
                 'time_horizon': 'This week',
                 'confidence': 'Low',
@@ -363,18 +363,18 @@ def phase_label_for_question(question_text: str) -> str:
 def short_decision_trigger(question_text: str) -> str:
     lowered = question_text.lower()
     if any(token in lowered for token in ('cve', 'vpn', 'edge', 'exploit', 'initial access')):
-        return 'Escalate now if active external intrusion signals are present.'
+        return 'What changed since last review in external intrusion signals on internet-facing systems?'
     if any(token in lowered for token in ('powershell', 'wmi', 'scheduled task', 'execution')):
-        return 'Escalate now if suspicious endpoint execution is confirmed.'
+        return 'What changed since last review in suspicious endpoint execution behavior?'
     if any(token in lowered for token in ('lateral', 'rdp', 'smb', 'pivot')):
-        return 'Escalate now if internal host-to-host spread is confirmed.'
+        return 'What changed since last review in internal host-to-host spread indicators?'
     if any(token in lowered for token in ('dns', 'domain', 'c2', 'beacon', 'command-and-control')):
-        return 'Escalate now if persistent command-and-control behavior is confirmed.'
+        return 'What changed since last review in command-and-control beacon or domain patterns?'
     if any(token in lowered for token in ('exfiltrat', 'stolen data', 'collection')):
-        return 'Escalate now if data staging or theft behavior is confirmed.'
+        return 'What changed since last review in data staging or exfiltration indicators?'
     if any(token in lowered for token in ('encrypt', 'ransom', 'impact', 'disrupt')):
-        return 'Escalate now if disruptive impact activity is confirmed.'
-    return 'Escalate now if this activity is confirmed in current telemetry.'
+        return 'What changed since last review in disruptive impact activity signals?'
+    return 'What changed since last review in this activity across current telemetry?'
 
 
 def telemetry_anchor_line(
@@ -519,21 +519,43 @@ def org_alignment_label(score: int) -> str:
     return 'Unknown'
 
 
-def escalation_threshold_line(question_text: str) -> str:
+def confidence_change_threshold_line(question_text: str) -> str:
     lowered = question_text.lower()
     if any(token in lowered for token in ('cve', 'vpn', 'edge', 'exploit', 'initial access')):
-        return '2+ confirmed exploit or unusual access events hit critical systems in 24 hours.'
+        return 'Raise confidence only if 2+ confirmed exploit or unusual access events hit critical systems in 24 hours.'
     if any(token in lowered for token in ('powershell', 'wmi', 'scheduled task', 'execution')):
-        return 'Suspicious execution appears on 2+ systems or one critical system.'
+        return 'Raise confidence when suspicious execution appears on 2+ systems or one critical system.'
     if any(token in lowered for token in ('lateral', 'rdp', 'smb', 'pivot')):
-        return 'Abnormal remote-service movement is seen across 2+ internal systems.'
+        return 'Raise confidence when abnormal remote-service movement is seen across 2+ internal systems.'
     if any(token in lowered for token in ('dns', 'domain', 'c2', 'beacon', 'command-and-control')):
-        return 'Repeated suspicious outbound check-ins continue across 2+ intervals.'
+        return 'Raise confidence when repeated suspicious outbound check-ins continue across 2+ intervals.'
     if any(token in lowered for token in ('exfiltrat', 'stolen data', 'collection')):
-        return 'Unusual staging activity plus outbound transfer is observed.'
+        return 'Raise confidence when unusual staging activity plus outbound transfer is observed.'
     if any(token in lowered for token in ('encrypt', 'ransom', 'impact', 'disrupt')):
-        return 'Backup tampering or widespread encryption activity is detected.'
-    return 'The same suspicious activity is confirmed in both endpoint and network logs.'
+        return 'Raise confidence when backup tampering or widespread encryption activity is detected.'
+    return 'Raise confidence when the same suspicious activity is confirmed in both endpoint and network logs.'
+
+
+def expected_output_line(question_text: str) -> str:
+    lowered = question_text.lower()
+    if any(token in lowered for token in ('cve', 'vpn', 'edge', 'exploit', 'initial access')):
+        return 'Record edge exposure delta, affected assets, and confidence shift with source links.'
+    if any(token in lowered for token in ('powershell', 'wmi', 'scheduled task', 'execution')):
+        return 'Record execution pattern delta, impacted hosts, and confidence shift with source links.'
+    if any(token in lowered for token in ('lateral', 'rdp', 'smb', 'pivot')):
+        return 'Record lateral movement delta, host relationships, and confidence shift with source links.'
+    if any(token in lowered for token in ('dns', 'domain', 'c2', 'beacon', 'command-and-control')):
+        return 'Record outbound beacon/domain delta, cadence, and confidence shift with source links.'
+    if any(token in lowered for token in ('exfiltrat', 'stolen data', 'collection')):
+        return 'Record staging or exfiltration delta, data scope, and confidence shift with source links.'
+    if any(token in lowered for token in ('encrypt', 'ransom', 'impact', 'disrupt')):
+        return 'Record impact behavior delta, business effect, and confidence shift with source links.'
+    return 'Record the observed delta versus prior review, confidence shift, and source links.'
+
+
+def escalation_threshold_line(question_text: str) -> str:
+    # Backward-compatible alias for older callers while keeping non-escalation language.
+    return confidence_change_threshold_line(question_text)
 
 
 def quick_check_title(question_text: str, phase_label: str) -> str:

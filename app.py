@@ -863,6 +863,7 @@ _priority_recency_points = priority_questions.priority_recency_points
 _priority_rank_score = priority_questions.priority_rank_score
 _org_context_tokens = priority_questions.org_context_tokens
 _org_alignment_label = priority_questions.org_alignment_label
+_confidence_change_threshold_line = priority_questions.confidence_change_threshold_line
 _escalation_threshold_line = priority_questions.escalation_threshold_line
 _quick_check_title = priority_questions.quick_check_title
 
@@ -1509,6 +1510,7 @@ def _fetch_actor_notebook_deps() -> dict[str, object]:
         'guidance_line': _guidance_line,
         'guidance_query_hint': _guidance_query_hint,
         'priority_disconfirming_signal': _priority_disconfirming_signal,
+        'confidence_change_threshold_line': _confidence_change_threshold_line,
         'escalation_threshold_line': _escalation_threshold_line,
         'priority_update_recency_label': _priority_update_recency_label,
         'org_alignment_label': _org_alignment_label,

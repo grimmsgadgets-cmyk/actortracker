@@ -55,6 +55,7 @@ def fetch_actor_notebook_wrapper_core(*, actor_id: str, deps: dict[str, object])
             'guidance_line': deps['guidance_line'],
             'guidance_query_hint': deps['guidance_query_hint'],
             'priority_disconfirming_signal': deps['priority_disconfirming_signal'],
+            'confidence_change_threshold_line': deps['confidence_change_threshold_line'],
             'escalation_threshold_line': deps['escalation_threshold_line'],
             'priority_update_recency_label': deps['priority_update_recency_label'],
             'org_alignment_label': deps['org_alignment_label'],
