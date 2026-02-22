@@ -1,4 +1,5 @@
 import sqlite3
+import time
 from datetime import datetime, timezone
 from starlette.requests import Request
 from fastapi import BackgroundTasks
@@ -897,6 +898,87 @@ def test_root_sidebar_shows_actor_last_updated_label(tmp_path, monkeypatch):
         response = client.get(f'/?actor_id={actor["id"]}')
         assert response.status_code == 200
         assert 'Updated 2026-02-19' in response.text
+
+
+def test_dashboard_and_observation_load_performance_guard(tmp_path, monkeypatch):
+    _setup_db(tmp_path)
+    actor = app_module.create_actor_profile('APT-Perf', 'Perf guard scope')
+    monkeypatch.setattr(app_module, 'run_actor_generation', lambda actor_id: None)
+    monkeypatch.setattr(
+        app_module,
+        'get_ollama_status',
+        lambda: {'available': False, 'base_url': 'http://offline', 'model': 'none'},
+    )
+
+    source_rows: list[tuple[str, str, str, str, str, str, str]] = []
+    observation_rows: list[tuple[str, str, str, str, str, str, str, str, str, str, str]] = []
+    for idx in range(250):
+        source_id = f'src-perf-{idx}'
+        source_rows.append(
+            (
+                source_id,
+                actor['id'],
+                'PerfSource',
+                f'https://example.test/{idx}',
+                '2026-02-20',
+                '2026-02-20T00:00:00+00:00',
+                f'APT-Perf item {idx}',
+            )
+        )
+    for idx in range(900):
+        key = f'src-perf-{idx}'
+        observation_rows.append(
+            (
+                f'obs-perf-{idx}',
+                actor['id'],
+                'source',
+                key,
+                f'Observation {idx}',
+                f'case-{idx}',
+                'moderate' if idx % 2 == 0 else 'high',
+                'B',
+                '2',
+                f'analyst-{idx % 6}',
+                f'2026-02-{(idx % 25) + 1:02d}T12:00:00+00:00',
+            )
+        )
+
+    with sqlite3.connect(app_module.DB_PATH) as connection:
+        connection.executemany(
+            '''
+            INSERT INTO sources (
+                id, actor_id, source_name, url, published_at, retrieved_at, pasted_text
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''',
+            source_rows,
+        )
+        connection.executemany(
+            '''
+            INSERT INTO analyst_observations (
+                id, actor_id, item_type, item_key, note, source_ref, confidence,
+                source_reliability, information_credibility, updated_by, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            observation_rows,
+        )
+        connection.commit()
+
+    with TestClient(app_module.app) as client:
+        root_start = time.perf_counter()
+        root_response = client.get(f'/?actor_id={actor["id"]}')
+        root_elapsed = time.perf_counter() - root_start
+        assert root_response.status_code == 200
+        assert root_elapsed < 3.0
+
+        obs_start = time.perf_counter()
+        obs_response = client.get(f"/actors/{actor['id']}/observations")
+        obs_elapsed = time.perf_counter() - obs_start
+        assert obs_response.status_code == 200
+        payload = obs_response.json()
+        assert len(payload['items']) == 900
+        assert obs_elapsed < 2.0
 
 
 def test_known_technique_ids_for_entity_collects_all_uses(monkeypatch):
