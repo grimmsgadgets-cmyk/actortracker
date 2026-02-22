@@ -255,6 +255,27 @@ def test_question_org_alignment_preserves_overlap_scoring():
     assert score >= 2
 
 
+def test_platforms_for_question_wrapper_delegates_to_guidance_catalog(monkeypatch):
+    monkeypatch.setattr(app_module.guidance_catalog, 'platforms_for_question', lambda _q: ['DNS/Proxy'])
+
+    platforms = app_module._platforms_for_question('Any question')  # noqa: SLF001
+
+    assert platforms == ['DNS/Proxy']
+
+
+def test_platforms_for_question_dedupes_and_prioritizes_expected_domains():
+    platforms = app_module._platforms_for_question(  # noqa: SLF001
+        'Phish email with VPN exploit and DNS beacon plus process command line'
+    )
+
+    assert platforms[0] == 'M365'
+    assert platforms.count('M365') == 1
+    assert 'Email Gateway' in platforms
+    assert 'Firewall/VPN' in platforms
+    assert 'DNS/Proxy' in platforms
+    assert 'EDR' in platforms
+
+
 def test_validate_outbound_url_blocks_localhost():
     with pytest.raises(app_module.HTTPException):
         app_module._validate_outbound_url('http://localhost/internal')  # noqa: SLF001
