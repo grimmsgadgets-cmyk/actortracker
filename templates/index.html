@@ -59,24 +59,37 @@
       }
       .main { padding: 16px; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
       .top-status-row { position: sticky; top: 0; z-index: 15; background: #f7f7f7; padding-bottom: 6px; }
-      .dashboard { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; flex: 1; min-height: 0; }
-      .workspace-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(0, 1fr); gap: 12px; min-height: 0; }
+      .dashboard { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; flex: 1; min-height: 0; }
+      .workspace-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; gap: 10px; min-height: 0; }
       .workspace-grid .pane { min-height: 0; overflow: auto; }
       .workspace-grid .pane .section-title { position: sticky; top: 0; z-index: 4; background: #fff; }
-      .card { background: #fff; border: 1px solid #d9e2ef; border-radius: 10px; padding: 14px; margin-bottom: 0; box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03); }
+      .card { background: #fff; border: 1px solid #d9e2ef; border-radius: 10px; padding: 12px; margin-bottom: 0; box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03); }
       .card.span-2 { grid-column: 1 / -1; }
       .ataglance-strip { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; padding: 10px 12px; position: sticky; top: 54px; z-index: 10; }
       .ataglance-metric { border: 1px solid #dce7f8; border-radius: 8px; background: #f8fbff; padding: 8px; min-height: 54px; }
       .ataglance-label { font-size: 10px; text-transform: uppercase; color: #64748b; letter-spacing: .03em; }
       .ataglance-value { font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 3px; }
+      .mini-trend-inline { display: flex; align-items: flex-end; gap: 2px; margin-top: 6px; height: 20px; }
+      .mini-trend-bar { width: 6px; border-radius: 2px; background: #89a8d8; }
+      .mini-trend-bar.peak { background: #c44f4f; }
       .bottom-drawer { min-height: 0; }
-      .section-title { margin-top: 0; margin-bottom: 10px; font-size: 18px; line-height: 1.25; padding-bottom: 6px; border-bottom: 1px solid #e8eef8; }
+      .section-title { margin-top: 0; margin-bottom: 8px; font-size: 16px; line-height: 1.2; padding-bottom: 6px; border-bottom: 1px solid #e8eef8; }
+      .role-chip { display: inline-block; margin-left: 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; border: 1px solid #cfdcee; border-radius: 999px; padding: 2px 7px; color: #41556f; background: #f3f8ff; vertical-align: middle; }
       .section-body { padding-right: 2px; }
-      .section-body p { margin: 0 0 8px; }
+      .section-body p { margin: 0 0 6px; }
       .section-body ul { margin-top: 4px; }
       .event { border-left: 3px solid #3f5f9a; margin: 6px 0; padding: 6px 8px; background: #f8fbff; }
       .event.notable-primary { border-left-color: #c44f4f; background: #fff1f1; }
       .event.notable-primary strong { color: #7f1d1d; }
+      .action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+      .action-row a, .action-row button { border: 1px solid #b8c7e2; background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 12px; text-decoration: none; color: #1f2937; cursor: pointer; }
+      .action-row .primary { background: #4a7bd0; color: #fff; border-color: #4a7bd0; }
+      .change-list { display: grid; gap: 8px; margin-top: 8px; }
+      .change-row { border: 1px solid #dfe6f3; border-radius: 8px; padding: 8px; background: #fbfdff; }
+      .change-row-main { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 12px; }
+      .change-row-title { font-weight: 600; color: #1f2937; }
+      .change-row-why { margin-top: 4px; font-size: 12px; color: #334155; }
+      .change-row-source { margin-top: 4px; font-size: 11px; color: #475569; }
       .timeline-graphic { position: relative; margin: 10px 0 0 6px; padding-left: 28px; }
       .timeline-graphic::before { content: ""; position: absolute; left: 9px; top: 0; bottom: 0; width: 3px; background: #c7d7ef; }
       .timeline-node { position: relative; margin: 0 0 14px; padding: 10px; border: 1px solid #d8e1ef; border-radius: 8px; background: #f9fbff; }
@@ -156,7 +169,6 @@
       .recent-source-list li { margin: 0; font-size: 13px; border: 1px solid #e4ebf7; border-radius: 8px; background: #fbfdff; padding: 8px; }
       .source-headline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
       .source-meta { display: block; color: #475569; font-size: 11px; line-height: 1.35; margin-bottom: 2px; }
-      .source-note-toggle { margin-top: 6px; }
       .source-title-link {
         display: inline-block;
         max-width: 56ch;
@@ -232,6 +244,41 @@
       .quick-actions a, .quick-actions button { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; }
       .sidebar .secondary-action button { min-height: 34px; font-size: 12px; }
       .sidebar .secondary-action[open] > summary { margin-bottom: 8px; }
+      .sidebar .interactive-panel { background: #2b3445; border-color: #3d4658; color: #fff; }
+      .sidebar .review-strip { background: #2b3445; border-color: #3d4658; }
+      .sidebar .review-metric { background: #1f2735; border-color: #3d4658; }
+      .sidebar .review-metric .label { color: #b8c7de; }
+      .sidebar .review-metric .value { color: #ffffff; }
+      .sidebar .review-meta { color: #c7d4ea; }
+      .sidebar .review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .sidebar .review-metric { min-width: 0; }
+      .sidebar .review-metric .value { font-size: 13px; overflow-wrap: anywhere; }
+      .sidebar .review-actions { gap: 6px; }
+      .sidebar .review-actions button { flex: 1 1 140px; }
+      .sidebar .ledger-controls label { color: #d6e3f5; }
+      .sidebar .ledger-controls input,
+      .sidebar .ledger-controls select,
+      .sidebar .obs-row input,
+      .sidebar .obs-row select,
+      .sidebar .obs-row textarea {
+        background: #1f2735;
+        border-color: #465268;
+        color: #fff;
+      }
+      .sidebar .ledger-item { background: #1f2735; border-color: #3d4658; }
+      .sidebar .ledger-head,
+      .sidebar .ledger-body,
+      .sidebar .ledger-link a,
+      .sidebar .ledger-link span,
+      .sidebar .observation-meta,
+      .sidebar .timeline-empty,
+      .sidebar .ledger-count,
+      .sidebar .inline-note { color: #d6e3f5; }
+      .sidebar .filter-chip { background: #1f2735; border-color: #4f5e77; color: #fff; }
+      .sidebar .obs-actions button,
+      .sidebar .ledger-actions button,
+      .sidebar .ledger-actions a,
+      .sidebar .review-actions button { background: #1f2735; border-color: #4f5e77; color: #fff; }
       .req-item { border: 1px solid #e3e3e3; border-radius: 8px; padding: 8px; margin-bottom: 8px; background: #fcfcff; }
       .req-item p { margin: 6px 0; font-size: 13px; line-height: 1.35; }
       .req-item form { margin-top: 6px; }
@@ -302,6 +349,7 @@
       @media (max-width: 1180px) {
         .workspace-grid { grid-template-columns: 1fr; }
         .workspace-grid .pane { min-height: auto; overflow: visible; }
+        .workspace-grid { grid-template-rows: auto; }
         .ataglance-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
         .timeline-ataglance { grid-template-columns: 1fr; }
         .kpi-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
@@ -362,6 +410,7 @@
             <form method="post" action="/actors/{{ notebook.actor.id }}/observations/auto-snapshot">
               <button type="submit">Auto-note changes</button>
             </form>
+            <a href="/actors/{{ notebook.actor.id }}/timeline/details">Open timeline details</a>
             <a href="/actors/{{ notebook.actor.id }}/export/analyst-pack.json" target="_blank" rel="noreferrer">Export analyst pack</a>
           </div>
           <details class="compact secondary-action">
@@ -416,6 +465,92 @@
           </details>
           {% endif %}
         </div>
+
+        <div class="sidebar-card" id="section-history-left">
+          <h3>Notes and history</h3>
+          <small>Keep one short running note, then review/export changes over time.</small>
+          <div class="interactive-panel" data-observation-item-type="actor" data-observation-item-key="summary">
+            <div class="obs-row">
+              <div>
+                <label>Analyst</label>
+                <input type="text" class="observation-analyst" placeholder="name or handle" />
+              </div>
+              <div>
+                <label>Confidence</label>
+                <select class="observation-confidence">
+                  <option value="moderate">Moderate</option>
+                  <option value="high">High</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <textarea class="observation-note" placeholder="What changed that matters for this actor?"></textarea>
+            </div>
+            <div class="obs-actions">
+              <button type="button" class="observation-save">Save note</button>
+              <button type="button" class="observation-history-toggle">View history</button>
+              <span class="observation-meta" data-observation-meta></span>
+            </div>
+            <div class="observation-history" data-observation-history style="display:none;"></div>
+          </div>
+          <div class="review-strip" style="margin-top:8px;">
+            <h4>Since last review</h4>
+            <div class="review-grid">
+              <div class="review-metric"><div class="label">Since</div><div class="value" id="since-review-date">Not set</div></div>
+              <div class="review-metric"><div class="label">Notes</div><div class="value" id="since-review-observations">0</div></div>
+              <div class="review-metric"><div class="label">Sources</div><div class="value" id="since-review-sources">0</div></div>
+              <div class="review-metric"><div class="label">Reports</div><div class="value" id="since-review-reports">0</div></div>
+            </div>
+            <div class="review-actions">
+              <button type="button" id="mark-reviewed">Mark reviewed now</button>
+              <button type="button" id="clear-reviewed">Clear baseline</button>
+              <span id="review-meta" class="review-meta"></span>
+            </div>
+          </div>
+          <details class="compact">
+            <summary>History, filters, export</summary>
+            <div class="ledger-controls">
+              <div>
+                <label for="ledger-filter-analyst">Analyst</label>
+                <input id="ledger-filter-analyst" type="text" placeholder="name contains..." />
+              </div>
+              <div>
+                <label for="ledger-filter-confidence">Confidence</label>
+                <select id="ledger-filter-confidence">
+                  <option value="">All</option>
+                  <option value="high">High</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div>
+                <label for="ledger-filter-from">Updated from</label>
+                <input id="ledger-filter-from" type="date" />
+              </div>
+              <div>
+                <label for="ledger-filter-to">Updated to</label>
+                <input id="ledger-filter-to" type="date" />
+              </div>
+              <div>
+                <label for="ledger-limit">Show</label>
+                <select id="ledger-limit">
+                  <option value="12">12</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                </select>
+              </div>
+            </div>
+            <div id="ledger-filter-chips" class="filter-chips"></div>
+            <div class="ledger-actions">
+              <button type="button" id="ledger-apply">Apply filters</button>
+              <button type="button" id="ledger-clear">Clear</button>
+              <a id="ledger-export-json" href="#" target="_blank" rel="noreferrer">Export JSON</a>
+              <a id="ledger-export-csv" href="#" target="_blank" rel="noreferrer">Export CSV</a>
+              <span id="observation-ledger-count" class="ledger-count"></span>
+            </div>
+            <div id="observation-ledger-empty" class="timeline-empty">No observations saved yet.</div>
+            <div id="observation-ledger-list" class="ledger-list"></div>
+          </details>
+        </div>
         {% endif %}
       </aside>
 
@@ -434,7 +569,7 @@
           {% if notebook %}
           <div class="live-controls">
             <span class="live-pill" id="live-indicator">Live sync on</span>
-            <button type="button" id="live-refresh">Refresh now</button>
+            <button type="button" id="live-refresh-top">Refresh now</button>
           </div>
           {% endif %}
         </div>
@@ -453,18 +588,66 @@
             <div class="ataglance-value"><span id="recent-reports">{{ recent_change.new_reports }}</span></div>
           </div>
           <div class="ataglance-metric">
-            <div class="ataglance-label">Activity (30d)</div>
-            <div class="ataglance-value">{{ notebook.kpis.activity_30d }}</div>
+            <div class="ataglance-label">Trend</div>
+            <div class="ataglance-value">{% if notebook.timeline_compact_rows %}Active{% else %}Quiet{% endif %}</div>
+            {% if notebook.timeline_graph %}
+            <div class="mini-trend-inline" aria-hidden="true">
+              {% for bucket in notebook.timeline_graph[:8] %}
+              <span class="mini-trend-bar{% if loop.last %} peak{% endif %}" style="height: {{ [4, bucket.height_pct // 2]|max }}px;"></span>
+              {% endfor %}
+            </div>
+            {% endif %}
           </div>
           <div class="ataglance-metric">
             <div class="ataglance-label">Notable Impact</div>
             <div class="ataglance-value"><span id="recent-impact">{{ recent_change.damage }}</span></div>
           </div>
         </section>
+        {% set reports_count = (recent_change.new_reports|string)|int %}
+        {% if reports_count > 3 %}
+        {% set now_status = 'activity is up' %}
+        {% elif reports_count > 0 %}
+        {% set now_status = 'activity changed' %}
+        {% else %}
+        {% set now_status = 'activity looks steady' %}
+        {% endif %}
+        <section class="card span-2">
+          <strong>Right now:</strong> {{ now_status }}. Check top changes first.
+          <div class="action-row">
+            <button type="button" class="primary" id="live-refresh">Refresh now</button>
+            <a href="#section-recent">Review top source</a>
+            <a href="#section-history-left">Open notes and history</a>
+            <a href="/actors/{{ notebook.actor.id }}/timeline/details">Open full timeline</a>
+          </div>
+        </section>
+
+        {% if notebook.priority_questions %}
+        <section class="card span-2 decision-queue" data-step="action" id="section-nextchecks">
+          <div class="decision-header">
+            <h2 class="section-title" style="margin:0;">Quick checks<span class="role-chip">Do next</span></h2>
+            <a href="/actors/{{ notebook.actor.id }}/questions">Open workspace</a>
+          </div>
+          <div class="dq-list">
+            {% for question in notebook.priority_questions[:3] %}
+            <details class="dq-row{% if loop.first %} open{% endif %}" {% if loop.first %}open{% endif %}>
+              <summary>
+                <strong>{{ question.quick_check_title }}</strong>
+                <span class="pbadge {{ question.priority.lower() }}">{{ question.priority }}</span>
+              </summary>
+              <div class="dq-detail">
+                <div class="dq-line"><strong>Where to start:</strong> {{ question.first_step or question.telemetry_anchor }}</div>
+                <div class="dq-line"><strong>What to watch:</strong> {{ question.what_to_look_for or question.success_condition or question.decision_trigger }}</div>
+                <div class="dq-line"><strong>What to note:</strong> {{ question.expected_output }}</div>
+              </div>
+            </details>
+            {% endfor %}
+          </div>
+        </section>
+        {% endif %}
 
         <div class="workspace-grid">
         <section class="card pane" data-step="who" id="section-who">
-          <h2 class="section-title">1) Who are they?</h2>
+          <h2 class="section-title">1) Who are they?<span class="role-chip">Understand</span></h2>
           <div class="section-body">
           <p>{{ notebook.actor_profile_summary }}</p>
           <p><small>Framework Group Match: {{ notebook.actor_profile_group_name }}</small></p>
@@ -525,7 +708,7 @@
         </section>
 
         <section class="card pane" data-step="recent" id="section-recent">
-          <h2 class="section-title">2) What have they been up to recently?</h2>
+          <h2 class="section-title">2) What have they been up to recently?<span class="role-chip">Watch</span></h2>
           {% if notebook.actor.notebook_status == 'running' %}
           <div class="notice status-working">Source collection is running in the background. This section will populate automatically.</div>
           {% endif %}
@@ -552,17 +735,7 @@
           </div>
           {% endif %}
           {% if notebook.recent_activity_highlights %}
-          {% set corroborating = notebook.recent_activity_highlights[0] %}
-          <div class="event">
-            <strong>Best corroborating evidence right now:</strong>
-            {% if corroborating.source_url %}
-            <a href="{{ corroborating.source_url }}" target="_blank" rel="noreferrer">{{ corroborating.evidence_title or 'Source article' }}</a>
-            {% else %}
-            <span>{{ corroborating.evidence_title or 'Source article' }}</span>
-            {% endif %}
-            <small>{{ corroborating.date }} | {{ corroborating.evidence_source_label or corroborating.source_name or 'Unknown source' }}</small>
-          </div>
-          <p><strong>Latest 3 sources:</strong></p>
+          <p><strong>Top 3 changes:</strong></p>
           {% set latest_diverse = namespace(items=[], seen_domains=[]) %}
           {% for item in notebook.recent_activity_highlights %}
           {% set domain_key = (item.evidence_group_domain or item.evidence_source_label or item.source_name or 'unknown')|lower %}
@@ -571,7 +744,7 @@
           {% set _ = latest_diverse.seen_domains.append(domain_key) %}
           {% endif %}
           {% endfor %}
-          <ul class="recent-source-list" id="latest-sources-list">
+          <div class="change-list" id="latest-sources-list">
             {% for item in latest_diverse.items[:3] %}
             {% set raw_title = (item.evidence_title or 'Untitled article') %}
             {% if raw_title.startswith('http://') or raw_title.startswith('https://') or (raw_title.count('/') >= 2 and ' ' not in raw_title) %}
@@ -579,77 +752,23 @@
             {% else %}
             {% set display_title = raw_title %}
             {% endif %}
-            {% set observation_key = item.source_id or item.timeline_event_id or ('highlight-' ~ loop.index0) %}
-            <li data-source-date="{{ item.date }}">
-              <div class="source-headline">
-                <span class="badge">{{ item.date }}</span>
-                <span class="badge {{ item.freshness_class }}">{{ item.freshness_label }}</span>
-                {% if item.source_url %}
-                <a class="source-title-link" href="{{ item.source_url }}" target="_blank" rel="noreferrer">{{ display_title }}</a>
-                {% else %}
-                <span class="source-title-link">{{ display_title }}</span>
-                {% endif %}
+            <div class="change-row" data-source-date="{{ item.date }}">
+              <div class="change-row-main">
+                <div class="change-row-title">{{ display_title }}</div>
+                <div><span class="badge">{{ item.date }}</span> <span class="badge {{ item.freshness_class }}">{{ item.freshness_label }}</span></div>
               </div>
-              <small class="source-meta">{{ item.evidence_source_label or item.source_name or 'Unknown source' }} | corroboration: {{ item.corroboration_sources or '1' }} source(s)</small>
-              <details class="compact source-note-toggle">
-                <summary>Analyst observation (optional)</summary>
-                <div class="interactive-panel" data-observation-item-type="source" data-observation-item-key="{{ observation_key }}">
-                  <p class="inline-note" style="margin:0 0 6px;"><strong>Reference format:</strong> note + confidence + source reliability (A-F) + information credibility (1-6).</p>
-                  <div class="obs-row">
-                    <div>
-                      <label>Analyst</label>
-                      <input type="text" class="observation-analyst" placeholder="name or handle" />
-                    </div>
-                    <div>
-                      <label>Confidence</label>
-                      <select class="observation-confidence">
-                        <option value="moderate">Moderate</option>
-                        <option value="high">High</option>
-                        <option value="low">Low</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label>Source reliability (A-F)</label>
-                      <select class="observation-source-reliability">
-                        <option value="">n/a</option>
-                        <option value="A">A</option>
-                        <option value="B">B</option>
-                        <option value="C">C</option>
-                        <option value="D">D</option>
-                        <option value="E">E</option>
-                        <option value="F">F</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label>Info credibility (1-6)</label>
-                      <select class="observation-information-credibility">
-                        <option value="">n/a</option>
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label>Source reference (optional)</label>
-                      <input type="text" class="observation-source-ref" placeholder="report id, tweet id, case link..." />
-                    </div>
-                    <textarea class="observation-note" placeholder="Historical context, pattern shift, or caveats..."></textarea>
-                  </div>
-                  <div class="obs-actions">
-                    <button type="button" class="observation-save">Save observation</button>
-                    <button type="button" class="observation-history-toggle">View history</button>
-                    <span class="observation-meta" data-observation-meta></span>
-                  </div>
-                  <div class="observation-guidance" data-observation-guidance></div>
-                  <div class="observation-history" data-observation-history style="display:none;"></div>
-                </div>
-              </details>
-            </li>
+              <div class="change-row-why">{{ item.text or 'Recent reporting update available.' }}</div>
+              <div class="change-row-source">
+                {% if item.source_url %}
+                <a class="source-title-link" href="{{ item.source_url }}" target="_blank" rel="noreferrer">{{ item.evidence_source_label or item.source_name or 'Source' }}</a>
+                {% else %}
+                {{ item.evidence_source_label or item.source_name or 'Source' }}
+                {% endif %}
+                | corroboration: {{ item.corroboration_sources or '1' }} source(s)
+              </div>
+            </div>
             {% endfor %}
-          </ul>
+          </div>
           <details class="compact">
             <summary>All sources</summary>
             <div class="event">
@@ -675,35 +794,6 @@
                     {% if item.ttp_ids %}<span class="badge">{{ item.ttp_ids }}</span>{% endif %}
                   </div>
                   <small class="source-meta">{{ item.evidence_source_label or item.source_name or 'Unknown source' }} | corroboration: {{ item.corroboration_sources or '1' }} source(s)</small>
-                  {% set all_observation_key = item.source_id or item.timeline_event_id or ('all-highlight-' ~ loop.index0) %}
-                  <details class="compact source-note-toggle">
-                    <summary>Quick note (optional)</summary>
-                    <div class="interactive-panel" data-observation-item-type="source" data-observation-item-key="{{ all_observation_key }}">
-                      <p class="inline-note" style="margin:0 0 6px;">Use this for a short historical note. Full structured entry is in <strong>Latest 3 sources</strong>.</p>
-                      <div class="obs-row">
-                        <div>
-                          <label>Analyst</label>
-                          <input type="text" class="observation-analyst" placeholder="name or handle" />
-                        </div>
-                        <div>
-                          <label>Confidence</label>
-                          <select class="observation-confidence">
-                            <option value="moderate">Moderate</option>
-                            <option value="high">High</option>
-                            <option value="low">Low</option>
-                          </select>
-                        </div>
-                        <textarea class="observation-note" placeholder="What changed vs prior assessment for this source?"></textarea>
-                      </div>
-                      <div class="obs-actions">
-                        <button type="button" class="observation-save">Save observation</button>
-                        <button type="button" class="observation-history-toggle">View history</button>
-                        <span class="observation-meta" data-observation-meta></span>
-                      </div>
-                      <div class="observation-guidance" data-observation-guidance></div>
-                      <div class="observation-history" data-observation-history style="display:none;"></div>
-                    </div>
-                  </details>
                 </li>
                 {% endfor %}
               </ul>
@@ -716,6 +806,10 @@
 
           </div>
 
+        </section>
+
+        </div>
+
           {% if notebook.ioc_items %}
           <details class="compact">
             <summary>Recent IOCs</summary>
@@ -726,225 +820,6 @@
             </div>
           </details>
           {% endif %}
-          <details class="compact">
-            <summary>Interactive event view (optional)</summary>
-            <div class="interactive-panel">
-              <h4>Filter timeline events quickly</h4>
-              <div class="filter-row">
-                <label for="timeline-severity">Severity</label>
-                <select id="timeline-severity">
-                  <option value="">All</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-                <label for="timeline-category">Category</label>
-                <select id="timeline-category">
-                  <option value="">All</option>
-                  {% set timeline_categories = namespace(seen=[]) %}
-                  {% for item in notebook.timeline_compact_rows %}
-                  {% set category_value = (item.category or '')|lower %}
-                  {% if category_value and category_value not in timeline_categories.seen %}
-                  {% set _ = timeline_categories.seen.append(category_value) %}
-                  <option value="{{ category_value }}">{{ item.category }}</option>
-                  {% endif %}
-                  {% endfor %}
-                </select>
-                <label for="timeline-search">Contains</label>
-                <input id="timeline-search" type="text" placeholder="target, technique, action..." />
-                <button type="button" id="timeline-reset">Reset</button>
-              </div>
-              <div id="timeline-filter-chips" class="filter-chips"></div>
-              {% if notebook.timeline_compact_rows %}
-              <table class="timeline-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Severity</th>
-                    <th>Category</th>
-                    <th>Action</th>
-                    <th>Target</th>
-                  </tr>
-                </thead>
-                <tbody id="timeline-filter-body">
-                  {% for item in notebook.timeline_compact_rows %}
-                  <tr
-                    data-severity="{{ item.severity|lower }}"
-                    data-category="{{ item.category|lower }}"
-                    data-search="{{ (item.action ~ ' ' ~ item.target ~ ' ' ~ item.techniques ~ ' ' ~ item.summary)|lower }}"
-                  >
-                    <td>{{ item.date }}</td>
-                    <td><span class="badge">{{ item.severity }}</span></td>
-                    <td>{{ item.category }}</td>
-                    <td>{{ item.action }}</td>
-                    <td>{{ item.target or 'n/a' }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-              <div id="timeline-empty" class="timeline-empty" style="display:none;">No events match the current filter.</div>
-              {% else %}
-              <div class="timeline-empty">No compact events available yet.</div>
-              {% endif %}
-            </div>
-          </details>
-        </section>
-
-        <section class="card pane" data-step="action" id="section-history">
-          <h2 class="section-title">3) What changed?</h2>
-          <p class="deemphasized" style="margin:0 0 8px;">
-            System notes changes automatically. Edit only what needs analyst context.
-          </p>
-          {% if notebook.recent_activity_synthesis %}
-          <div class="interactive-panel">
-            <h4>What stands out now</h4>
-            {% for synthesis in notebook.recent_activity_synthesis[:3] %}
-            <div class="event{% if loop.first %} notable-primary{% endif %}"><strong>{{ synthesis.label }}:</strong> {{ synthesis.text }}</div>
-            {% endfor %}
-          </div>
-          {% endif %}
-          <div class="interactive-panel">
-            <h4>Observation Ledger</h4>
-            <div class="review-strip">
-              <h4>What Changed Since Last Review</h4>
-              <div class="review-grid">
-                <div class="review-metric"><div class="label">Since</div><div class="value" id="since-review-date">Not set</div></div>
-                <div class="review-metric"><div class="label">Observations</div><div class="value" id="since-review-observations">0</div></div>
-                <div class="review-metric"><div class="label">Recent Sources</div><div class="value" id="since-review-sources">0</div></div>
-                <div class="review-metric"><div class="label">Reports (Current)</div><div class="value" id="since-review-reports">0</div></div>
-              </div>
-              <div class="review-actions">
-                <button type="button" id="mark-reviewed">Mark reviewed now</button>
-                <button type="button" id="clear-reviewed">Clear baseline</button>
-                <span id="review-meta" class="review-meta"></span>
-              </div>
-            </div>
-            <details class="compact">
-              <summary>Filters and export</summary>
-              <div class="ledger-controls">
-                <div>
-                  <label for="ledger-filter-analyst">Analyst</label>
-                  <input id="ledger-filter-analyst" type="text" placeholder="name contains..." />
-                </div>
-                <div>
-                  <label for="ledger-filter-confidence">Confidence</label>
-                  <select id="ledger-filter-confidence">
-                    <option value="">All</option>
-                    <option value="high">High</option>
-                    <option value="moderate">Moderate</option>
-                    <option value="low">Low</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="ledger-filter-from">Updated from</label>
-                  <input id="ledger-filter-from" type="date" />
-                </div>
-                <div>
-                  <label for="ledger-filter-to">Updated to</label>
-                  <input id="ledger-filter-to" type="date" />
-                </div>
-                <div>
-                  <label for="ledger-limit">Show</label>
-                  <select id="ledger-limit">
-                    <option value="12">12</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                  </select>
-                </div>
-              </div>
-              <div id="ledger-filter-chips" class="filter-chips"></div>
-              <div class="ledger-actions">
-                <button type="button" id="ledger-apply">Apply filters</button>
-                <button type="button" id="ledger-clear">Clear</button>
-                <a id="ledger-export-json" href="#" target="_blank" rel="noreferrer">Export JSON</a>
-                <a id="ledger-export-csv" href="#" target="_blank" rel="noreferrer">Export CSV</a>
-                <span id="observation-ledger-count" class="ledger-count"></span>
-              </div>
-            </details>
-            <div id="observation-ledger-empty" class="timeline-empty">No observations saved yet.</div>
-            <div id="observation-ledger-list" class="ledger-list"></div>
-          </div>
-        </section>
-
-        {% if notebook.priority_questions %}
-        <section class="card pane decision-queue" data-step="action">
-          <div class="decision-header">
-            <h2 class="section-title" style="margin:0;">Quick checks</h2>
-            <a href="/actors/{{ notebook.actor.id }}/questions">Open workspace</a>
-          </div>
-          <div class="dq-list">
-            {% for question in notebook.priority_questions[:3] %}
-            <details class="dq-row">
-              <summary>
-                <strong>{{ question.quick_check_title }}</strong>
-                <span class="pbadge {{ question.priority.lower() }}">{{ question.priority }}</span>
-              </summary>
-              <div class="dq-detail">
-                <div class="dq-line"><strong>Where to start:</strong> {{ question.first_step or question.telemetry_anchor }}</div>
-                <div class="dq-line"><strong>What to watch:</strong> {{ question.what_to_look_for or question.success_condition or question.decision_trigger }}</div>
-                <div class="dq-line"><strong>What to note:</strong> {{ question.expected_output }}</div>
-              </div>
-            </details>
-            {% endfor %}
-          </div>
-        </section>
-        {% endif %}
-        </div>
-
-        <section class="card span-2 bottom-drawer" data-step="recent" id="section-timeline">
-          <h2 class="section-title">4) Activity over time</h2>
-          {% if notebook.actor.notebook_status == 'running' %}
-          <div class="notice status-working">Timeline events are being generated from source evidence.</div>
-          {% endif %}
-          <details class="compact">
-            <summary>Show timeline</summary>
-          {% if notebook.timeline_recent_items %}
-          <div class="timeline-ataglance">
-            <div class="deviation-strip">
-              <h4>Recent Deviations ({{ notebook.timeline_window_label }})</h4>
-              <div class="chip-line">
-                {% for dev in notebook.emerging_techniques %}
-                <span class="chip alert">{{ dev.technique_id }}{% if dev.last_seen %} ({{ dev.last_seen }}){% endif %} - {{ dev.source_count }} src</span>
-                {% else %}
-                <span class="chip">No deviations yet</span>
-                {% endfor %}
-              </div>
-            </div>
-            <div class="mini-graph">
-              <h4>Activity Over Time ({{ notebook.timeline_window_label }})</h4>
-              <div class="graph-cols">
-                {% for bucket in notebook.timeline_graph %}
-                <div class="graph-col" title="{{ bucket.label }} ({{ bucket.total }} events)">
-                  <div class="stack" style="height: {{ bucket.height_pct }}px;">
-                    {% for seg in bucket.segments %}
-                    <div class="stack-seg" style="background: {{ seg.color }}; flex: {{ seg.flex }};" title="{{ seg.category }}: {{ seg.count }}"></div>
-                    {% endfor %}
-                  </div>
-                  <div class="graph-label">{{ bucket.label[5:] }}</div>
-                </div>
-                {% endfor %}
-              </div>
-              <div class="graph-legend">
-                <span class="legend-item"><span class="legend-swatch" style="background:#5b8def;"></span>Initial access</span>
-                <span class="legend-item"><span class="legend-swatch" style="background:#49a078;"></span>Execution</span>
-                <span class="legend-item"><span class="legend-swatch" style="background:#8a6adf;"></span>Persistence</span>
-                <span class="legend-item"><span class="legend-swatch" style="background:#2e8bcb;"></span>Lateral movement</span>
-                <span class="legend-item"><span class="legend-swatch" style="background:#d48a2f;"></span>Command and control</span>
-                <span class="legend-item"><span class="legend-swatch" style="background:#c44f4f;"></span>Exfiltration</span>
-                <span class="legend-item"><span class="legend-swatch" style="background:#9f2d2d;"></span>Impact</span>
-                <span class="legend-item"><span class="legend-swatch" style="background:#6f7d8c;"></span>Defense evasion</span>
-                <span class="legend-item"><span class="legend-swatch" style="background:#7b8a97;"></span>Report</span>
-              </div>
-            </div>
-          </div>
-          <div class="timeline-footer-link">
-            <a href="/actors/{{ notebook.actor.id }}/timeline/details">View all details</a>
-          </div>
-          {% else %}
-          <p>No timeline entries yet.</p>
-          {% endif %}
-          </details>
-        </section>
 
         </div>
         {% endif %}

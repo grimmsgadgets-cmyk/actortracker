@@ -4,6 +4,7 @@
 
         const liveIndicator = document.getElementById("live-indicator");
         const liveRefresh = document.getElementById("live-refresh");
+        const liveRefreshTop = document.getElementById("live-refresh-top");
         const reportNode = document.getElementById("recent-reports");
         const targetsNode = document.getElementById("recent-targets");
         const impactNode = document.getElementById("recent-impact");
@@ -36,6 +37,7 @@
         }
 
         if (liveRefresh) liveRefresh.addEventListener("click", runLiveRefresh);
+        if (liveRefreshTop) liveRefreshTop.addEventListener("click", runLiveRefresh);
         setInterval(runLiveRefresh, 20000);
         runLiveRefresh();
 
@@ -117,18 +119,20 @@
           if (query) addChip(timelineFilterChips, "Text: " + query, () => { if (searchInput) searchInput.value = ""; applyTimelineFilter(); });
         }
 
-        [severitySelect, categorySelect, searchInput].forEach((element) => {
-          if (!element) return;
-          element.addEventListener("input", applyTimelineFilter);
-          element.addEventListener("change", applyTimelineFilter);
-        });
-        if (timelineReset) {
-          timelineReset.addEventListener("click", () => {
-            if (severitySelect) severitySelect.value = "";
-            if (categorySelect) categorySelect.value = "";
-            if (searchInput) searchInput.value = "";
-            applyTimelineFilter();
+        if (timelineRows.length) {
+          [severitySelect, categorySelect, searchInput].forEach((element) => {
+            if (!element) return;
+            element.addEventListener("input", applyTimelineFilter);
+            element.addEventListener("change", applyTimelineFilter);
           });
+          if (timelineReset) {
+            timelineReset.addEventListener("click", () => {
+              if (severitySelect) severitySelect.value = "";
+              if (categorySelect) categorySelect.value = "";
+              if (searchInput) searchInput.value = "";
+              applyTimelineFilter();
+            });
+          }
         }
 
         const observationStore = new Map();
@@ -578,7 +582,7 @@
         }
 
         loadObservations();
-        renderTimelineChips();
+        if (timelineRows.length) renderTimelineChips();
         renderSinceReview();
 
       })();
