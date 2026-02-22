@@ -760,7 +760,7 @@ def test_root_renders_analyst_flow_headings(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert '1) Who are they?' in response.text
     assert '2) What have they been up to recently?' in response.text
-    assert '3) What do I do about it?' in response.text
+    assert '3) Analyst Interpretation Over Time' in response.text
 
 
 def test_known_technique_ids_for_entity_collects_all_uses(monkeypatch):

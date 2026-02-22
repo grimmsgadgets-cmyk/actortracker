@@ -204,9 +204,35 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
                        source_reliability, information_credibility, updated_by, updated_at
                 FROM analyst_observations
                 WHERE actor_id = ?
+                ORDER BY updated_at DESC
                 ''',
                 (actor_id,),
             ).fetchall()
+            source_keys = [
+                str(row[1])
+                for row in rows
+                if str(row[0] or '').strip().lower() == 'source' and str(row[1] or '').strip()
+            ]
+            source_lookup: dict[str, dict[str, str]] = {}
+            if source_keys:
+                placeholders = ','.join('?' for _ in source_keys)
+                source_rows = connection.execute(
+                    f'''
+                    SELECT id, source_name, url, title, published_at, retrieved_at
+                    FROM sources
+                    WHERE actor_id = ? AND id IN ({placeholders})
+                    ''',
+                    (actor_id, *source_keys),
+                ).fetchall()
+                source_lookup = {
+                    str(source_row[0]): {
+                        'source_name': str(source_row[1] or ''),
+                        'source_url': str(source_row[2] or ''),
+                        'source_title': str(source_row[3] or ''),
+                        'source_date': str(source_row[4] or source_row[5] or ''),
+                    }
+                    for source_row in source_rows
+                }
         return {
             'actor_id': actor_id,
             'items': [
@@ -220,6 +246,10 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
                     'information_credibility': row[6] or '',
                     'updated_by': row[7] or '',
                     'updated_at': row[8] or '',
+                    'source_name': source_lookup.get(str(row[1]), {}).get('source_name', ''),
+                    'source_url': source_lookup.get(str(row[1]), {}).get('source_url', ''),
+                    'source_title': source_lookup.get(str(row[1]), {}).get('source_title', ''),
+                    'source_date': source_lookup.get(str(row[1]), {}).get('source_date', ''),
                 }
                 for row in rows
             ],

@@ -206,6 +206,11 @@
       .obs-row textarea { min-height: 70px; resize: vertical; grid-column: 1 / -1; }
       .obs-actions { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
       .obs-actions button { border: 1px solid #b8c7e2; background: #f7fbff; border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
+      .ledger-list { display: grid; gap: 8px; margin-top: 8px; }
+      .ledger-item { border: 1px solid #dce7f8; border-radius: 8px; background: #fbfdff; padding: 8px; }
+      .ledger-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 4px; font-size: 11px; color: #475569; }
+      .ledger-body { font-size: 13px; line-height: 1.35; color: #1f2937; margin-bottom: 4px; }
+      .ledger-link { font-size: 12px; }
       .live-controls { display: inline-flex; gap: 6px; align-items: center; }
       .live-controls button { border: 1px solid #c7d4ea; background: #fff; border-radius: 999px; font-size: 11px; padding: 4px 8px; cursor: pointer; }
       @media (max-width: 1180px) { .dashboard { grid-template-columns: 1fr; } .card.span-2 { grid-column: auto; } .timeline-ataglance { grid-template-columns: 1fr; } .kpi-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); } .snapshot-grid { grid-template-columns: 1fr; } }
@@ -340,7 +345,7 @@
             <ul>
               <li><strong>Step 1 - Who are they?</strong> Learn the actor profile and common techniques.</li>
               <li><strong>Step 2 - What changed recently?</strong> Review the snapshot cards to understand impact fast.</li>
-              <li><strong>Step 3 - What do I do now?</strong> Follow the top action cards and escalate only when threshold is met.</li>
+              <li><strong>Step 3 - How is the assessment changing?</strong> Capture observations tied to source evidence over time.</li>
             </ul>
           </div>
           <div class="flow-nav" id="flow-nav">
@@ -355,7 +360,7 @@
             <div class="helper-box">
               <p><strong>Technique ID:</strong> A MITRE ATT&CK behavior label (example: <code>T1486</code>) used to map activity patterns.</p>
               <p><strong>Confidence:</strong> How strong the evidence is based on source count and recency.</p>
-              <p><strong>Escalation threshold:</strong> The minimum evidence that should trigger incident response actions.</p>
+              <p><strong>Source reliability + information credibility:</strong> Use A-F and 1-6 to standardize historical source quality.</p>
             </div>
           </details>
         </section>
@@ -566,6 +571,60 @@
                   <small>{{ item.evidence_source_label or item.source_name or 'Unknown source' }} | corroboration: {{ item.corroboration_sources or '1' }} source(s)</small>
                   {% if item.category %}<span class="badge">{{ item.category }}</span>{% endif %}
                   {% if item.ttp_ids %}<span class="badge">{{ item.ttp_ids }}</span>{% endif %}
+                  {% set all_observation_key = item.source_id or item.timeline_event_id or ('all-highlight-' ~ loop.index0) %}
+                  <details class="compact">
+                    <summary>Analyst observation (optional)</summary>
+                    <div class="interactive-panel" data-observation-item-type="source" data-observation-item-key="{{ all_observation_key }}">
+                      <p class="inline-note" style="margin:0 0 6px;"><strong>Reference format:</strong> note + confidence + source reliability (A-F) + information credibility (1-6).</p>
+                      <div class="obs-row">
+                        <div>
+                          <label>Analyst</label>
+                          <input type="text" class="observation-analyst" placeholder="name or handle" />
+                        </div>
+                        <div>
+                          <label>Confidence</label>
+                          <select class="observation-confidence">
+                            <option value="moderate">Moderate</option>
+                            <option value="high">High</option>
+                            <option value="low">Low</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label>Source reliability (A-F)</label>
+                          <select class="observation-source-reliability">
+                            <option value="">n/a</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                            <option value="E">E</option>
+                            <option value="F">F</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label>Info credibility (1-6)</label>
+                          <select class="observation-information-credibility">
+                            <option value="">n/a</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="6">6</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label>Source reference (optional)</label>
+                          <input type="text" class="observation-source-ref" placeholder="report id, tweet id, case link..." />
+                        </div>
+                        <textarea class="observation-note" placeholder="Historical context, pattern shift, or caveats..."></textarea>
+                      </div>
+                      <div class="obs-actions">
+                        <button type="button" class="observation-save">Save observation</button>
+                        <span class="observation-meta" data-observation-meta></span>
+                      </div>
+                    </div>
+                  </details>
                 </li>
                 {% endfor %}
               </ul>
@@ -646,22 +705,34 @@
           </details>
         </section>
 
+        <section class="card span-2" data-step="action">
+          <h2 class="section-title">3) Analyst Interpretation Over Time</h2>
+          <p class="deemphasized" style="margin:0 0 8px;">
+            Capture and review source-linked observations to track how assessment evolves over time.
+          </p>
+          <div class="interactive-panel">
+            <h4>Observation Ledger</h4>
+            <div id="observation-ledger-empty" class="timeline-empty">No observations saved yet.</div>
+            <div id="observation-ledger-list" class="ledger-list"></div>
+          </div>
+        </section>
+
         {% if notebook.priority_questions %}
         <section class="card span-2 decision-queue" data-step="action">
           <div class="decision-header">
-            <h2 class="section-title" style="margin:0;">3) What do I do about it?</h2>
+            <h2 class="section-title" style="margin:0;">Historical Analysis Prompts (optional)</h2>
             <a href="/actors/{{ notebook.actor.id }}/questions">Open workspace</a>
           </div>
           <p class="deemphasized" style="margin:0 0 8px;">
-            Start with these analyst actions and escalate when the trigger conditions are met.
+            Use these prompts to deepen context and compare this cycle against prior reporting.
           </p>
           <details class="compact">
-            <summary>How to use these action cards (optional)</summary>
+            <summary>How to use these prompts (optional)</summary>
             <div class="helper-box">
               <ul>
-                <li>Work top-to-bottom on the first 1-3 cards.</li>
-                <li>If you cannot confirm the decision trigger, keep monitoring and gather more evidence.</li>
-                <li>If escalation threshold is met, document evidence and hand off to incident response.</li>
+                <li>Work top-to-bottom on the first 1-3 prompts.</li>
+                <li>Capture what changed from prior assessment in source-linked observations.</li>
+                <li>Record uncertainty explicitly when evidence is incomplete or mixed.</li>
               </ul>
             </div>
           </details>
@@ -673,19 +744,19 @@
                 <span class="pbadge {{ question.priority.lower() }}">{{ question.priority }}</span>
               </summary>
               <div class="dq-detail">
-                <div class="dq-line"><strong>Decision trigger:</strong> {{ question.decision_trigger }}</div>
-                <div class="dq-line"><strong>Immediate action:</strong> {{ question.first_step or question.telemetry_anchor }}</div>
+                <div class="dq-line"><strong>Assessment question:</strong> {{ question.decision_trigger }}</div>
+                <div class="dq-line"><strong>Starting angle:</strong> {{ question.first_step or question.telemetry_anchor }}</div>
                 {% if question.query_hint %}
-                <div class="dq-line"><strong>Query hint:</strong> {{ question.query_hint }}</div>
+                <div class="dq-line"><strong>Suggested query:</strong> {{ question.query_hint }}</div>
                 {% endif %}
                 {% if question.what_to_look_for %}
-                <div class="dq-line"><strong>What to look for first:</strong> {{ question.what_to_look_for }}</div>
+                <div class="dq-line"><strong>Evidence to compare:</strong> {{ question.what_to_look_for }}</div>
                 {% endif %}
-                <div class="dq-line"><strong>Escalation threshold:</strong> {{ question.escalation_threshold }}</div>
+                <div class="dq-line"><strong>Confidence threshold:</strong> {{ question.escalation_threshold }}</div>
                 {% if question.success_condition %}
-                <div class="dq-line"><strong>If not found:</strong> {{ question.success_condition }}</div>
+                <div class="dq-line"><strong>Alternative interpretation:</strong> {{ question.success_condition }}</div>
                 {% endif %}
-                <div class="dq-line"><strong>Confidence:</strong> {{ question.confidence }} | {{ question.evidence_recency }} | corroboration: {{ question.corroborating_sources }} source(s) | org fit: {{ question.org_alignment }}</div>
+                <div class="dq-line"><strong>Evidence quality:</strong> {{ question.confidence }} | {{ question.evidence_recency }} | corroboration: {{ question.corroborating_sources }} source(s) | org fit: {{ question.org_alignment }}</div>
                 {% if question.updated_at %}
                 <div class="dq-line"><strong>Last signal update:</strong> {{ question.updated_at }}</div>
                 {% endif %}
@@ -829,6 +900,8 @@
         const timelineEmpty = document.getElementById("timeline-empty");
         const timelineReset = document.getElementById("timeline-reset");
         const observationCards = Array.from(document.querySelectorAll("[data-observation-item-type][data-observation-item-key]"));
+        const observationLedgerList = document.getElementById("observation-ledger-list");
+        const observationLedgerEmpty = document.getElementById("observation-ledger-empty");
 
         function applyTimelineFilter() {
           const severity = (severitySelect && severitySelect.value || "").toLowerCase();
@@ -868,6 +941,12 @@
           return String(itemType || "") + "::" + String(itemKey || "");
         }
 
+        function ratingLabel(item) {
+          const sr = String(item.source_reliability || "").trim();
+          const ic = String(item.information_credibility || "").trim();
+          return (sr || ic) ? sr + ic : "n/a";
+        }
+
         function applyObservationCard(card) {
           const itemType = card.dataset.observationItemType || "";
           const itemKey = card.dataset.observationItemKey || "";
@@ -890,10 +969,55 @@
             const updatedAt = String(data.updated_at || "");
             const updatedBy = String(data.updated_by || "");
             const confidence = String(data.confidence || "moderate");
-            const rating = [String(data.source_reliability || ""), String(data.information_credibility || "")].join("");
-            const ratingText = rating.trim() ? " | rating " + rating : "";
-            metaNode.textContent = updatedAt ? "Saved " + updatedAt + " by " + (updatedBy || "analyst") + " | " + confidence + ratingText : "";
+            const ratingText = ratingLabel(data);
+            metaNode.textContent = updatedAt ? "Saved " + updatedAt + " by " + (updatedBy || "analyst") + " | " + confidence + " | rating " + ratingText : "";
           }
+        }
+
+        function renderObservationLedger() {
+          if (!observationLedgerList || !observationLedgerEmpty) return;
+          observationLedgerList.innerHTML = "";
+          const items = Array.from(observationStore.values()).sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+          if (!items.length) {
+            observationLedgerEmpty.style.display = "";
+            return;
+          }
+          observationLedgerEmpty.style.display = "none";
+          items.slice(0, 12).forEach((item) => {
+            const wrap = document.createElement("div");
+            wrap.className = "ledger-item";
+            const head = document.createElement("div");
+            head.className = "ledger-head";
+            const by = document.createElement("span");
+            by.textContent = "By " + String(item.updated_by || "analyst");
+            const at = document.createElement("span");
+            at.textContent = String(item.updated_at || "");
+            const conf = document.createElement("span");
+            conf.textContent = "Confidence: " + String(item.confidence || "moderate");
+            const rating = document.createElement("span");
+            rating.textContent = "Rating: " + ratingLabel(item);
+            head.append(by, at, conf, rating);
+            const body = document.createElement("div");
+            body.className = "ledger-body";
+            body.textContent = String(item.note || "(no note text)");
+            wrap.append(head, body);
+            const sourceTitle = String(item.source_title || item.source_name || "");
+            const sourceUrl = String(item.source_url || "");
+            if (sourceTitle || sourceUrl) {
+              const linkWrap = document.createElement("div");
+              linkWrap.className = "ledger-link";
+              const sourceText = document.createElement(sourceUrl ? "a" : "span");
+              if (sourceUrl) {
+                sourceText.href = sourceUrl;
+                sourceText.target = "_blank";
+                sourceText.rel = "noreferrer";
+              }
+              sourceText.textContent = sourceTitle || sourceUrl;
+              linkWrap.appendChild(sourceText);
+              wrap.appendChild(linkWrap);
+            }
+            observationLedgerList.appendChild(wrap);
+          });
         }
 
         async function loadObservations() {
@@ -906,6 +1030,7 @@
               observationStore.set(observationMapKey(item.item_type, item.item_key), item);
             });
             observationCards.forEach(applyObservationCard);
+            renderObservationLedger();
           } catch (error) {
             // Keep page usable even if observation endpoint is unavailable.
           }
@@ -932,6 +1057,8 @@
               note: note
             };
             try {
+              const metaNode = card.querySelector("[data-observation-meta]");
+              if (metaNode) metaNode.textContent = "Saving...";
               const response = await fetch(
                 "/actors/" + encodeURIComponent(actorId) + "/observations/" + encodeURIComponent(itemType) + "/" + encodeURIComponent(itemKey),
                 { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify(payload) }
@@ -939,7 +1066,10 @@
               if (!response.ok) return;
               const data = await response.json();
               observationStore.set(observationMapKey(itemType, itemKey), data);
-              applyObservationCard(card);
+              observationCards
+                .filter((candidate) => (candidate.dataset.observationItemType || "") === itemType && (candidate.dataset.observationItemKey || "") === itemKey)
+                .forEach(applyObservationCard);
+              renderObservationLedger();
             } catch (error) {
               const metaNode = card.querySelector("[data-observation-meta]");
               if (metaNode) metaNode.textContent = "Save failed. Retry.";
