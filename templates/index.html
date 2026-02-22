@@ -199,6 +199,9 @@
       .interactive-panel h4 { margin: 0 0 6px; font-size: 13px; }
       .filter-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
       .filter-row select, .filter-row button, .filter-row input { padding: 5px 8px; border-radius: 6px; border: 1px solid #c7d4ea; background: #fff; font-size: 12px; }
+      .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
+      .filter-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #b9cae7; border-radius: 999px; padding: 2px 8px; font-size: 11px; background: #f3f8ff; color: #1f2937; }
+      .filter-chip button { border: 0; background: transparent; font-size: 12px; cursor: pointer; color: #334155; padding: 0; line-height: 1; }
       .timeline-table { width: 100%; border-collapse: collapse; font-size: 12px; }
       .timeline-table th, .timeline-table td { border-bottom: 1px solid #e3ebf8; text-align: left; padding: 6px; vertical-align: top; }
       .timeline-table tr:hover { background: #f3f8ff; }
@@ -220,10 +223,27 @@
       .ledger-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
       .ledger-actions button, .ledger-actions a { border: 1px solid #b8c7e2; background: #f7fbff; border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; text-decoration: none; color: #1f2937; }
       .ledger-count { font-size: 11px; color: #475569; }
+      .review-strip { border: 1px solid #d9e7fb; border-radius: 8px; background: #f7fbff; padding: 8px; margin-bottom: 8px; }
+      .review-strip h4 { margin: 0 0 6px; font-size: 13px; }
+      .review-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
+      .review-metric { border: 1px solid #dce7f8; border-radius: 8px; background: #fff; padding: 6px; }
+      .review-metric .label { font-size: 10px; text-transform: uppercase; letter-spacing: .02em; color: #64748b; }
+      .review-metric .value { font-size: 14px; font-weight: 600; margin-top: 2px; color: #0f172a; }
+      .review-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+      .review-actions button { border: 1px solid #b8c7e2; background: #fff; border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
+      .review-meta { font-size: 11px; color: #475569; }
+      .cmdk-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.35); display: none; align-items: flex-start; justify-content: center; padding-top: 12vh; z-index: 60; }
+      .cmdk-overlay.open { display: flex; }
+      .cmdk-panel { width: min(640px, 92vw); border: 1px solid #b9cae7; border-radius: 10px; background: #fff; box-shadow: 0 16px 48px rgba(15, 23, 42, 0.2); overflow: hidden; }
+      .cmdk-input { width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid #e4ebf7; padding: 12px; font-size: 14px; }
+      .cmdk-list { max-height: 320px; overflow-y: auto; }
+      .cmdk-item { width: 100%; text-align: left; border: 0; background: #fff; border-bottom: 1px solid #eef3fb; padding: 10px 12px; cursor: pointer; font-size: 13px; color: #1f2937; }
+      .cmdk-item.active, .cmdk-item:hover { background: #f2f7ff; }
+      .cmdk-empty { padding: 12px; font-size: 12px; color: #64748b; }
       .live-controls { display: inline-flex; gap: 6px; align-items: center; }
       .live-controls button { border: 1px solid #c7d4ea; background: #fff; border-radius: 999px; font-size: 11px; padding: 4px 8px; cursor: pointer; }
       @media (max-width: 1180px) { .dashboard { grid-template-columns: 1fr; } .card.span-2 { grid-column: auto; } .timeline-ataglance { grid-template-columns: 1fr; } .kpi-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); } .snapshot-grid { grid-template-columns: 1fr; } }
-      @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .status-chip { max-width: 100%; width: 100%; } .obs-row { grid-template-columns: 1fr; } .ledger-controls { grid-template-columns: 1fr 1fr; } }
+      @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .status-chip { max-width: 100%; width: 100%; } .obs-row { grid-template-columns: 1fr; } .ledger-controls { grid-template-columns: 1fr 1fr; } .review-grid { grid-template-columns: 1fr 1fr; } }
     </style>
   </head>
   <body {% if notebook %}data-actor-id="{{ notebook.actor.id }}"{% endif %}>
@@ -375,7 +395,7 @@
           </details>
         </section>
 
-        <section class="card" data-step="who">
+        <section class="card" data-step="who" id="section-who">
           <h2 class="section-title">1) Who are they?</h2>
           <div class="section-body">
           <p>{{ notebook.actor_profile_summary }}</p>
@@ -436,7 +456,7 @@
           {% endif %}
         </section>
 
-        <section class="card" data-step="recent">
+        <section class="card" data-step="recent" id="section-recent">
           <h2 class="section-title">2) What have they been up to recently?</h2>
           {% if notebook.actor.notebook_status == 'running' %}
           <div class="notice status-working">Source collection is running in the background. This section will populate automatically.</div>
@@ -484,7 +504,7 @@
           {% set _ = latest_diverse.seen_domains.append(domain_key) %}
           {% endif %}
           {% endfor %}
-          <ul class="recent-source-list">
+          <ul class="recent-source-list" id="latest-sources-list">
             {% for item in latest_diverse.items[:3] %}
             {% set raw_title = (item.evidence_title or 'Untitled article') %}
             {% if raw_title.startswith('http://') or raw_title.startswith('https://') or (raw_title.count('/') >= 2 and ' ' not in raw_title) %}
@@ -493,7 +513,7 @@
             {% set display_title = raw_title %}
             {% endif %}
             {% set observation_key = item.source_id or item.timeline_event_id or ('highlight-' ~ loop.index0) %}
-            <li>
+            <li data-source-date="{{ item.date }}">
               <div class="source-headline">
                 <span class="badge">{{ item.date }}</span>
                 <span class="badge {{ item.freshness_class }}">{{ item.freshness_label }}</span>
@@ -572,7 +592,7 @@
                 {% else %}
                 {% set display_title = raw_title %}
                 {% endif %}
-                <li>
+                <li data-source-date="{{ item.date }}">
                   <div class="source-headline">
                     <span class="badge">{{ item.date }}</span>
                     <span class="badge {{ item.freshness_class }}">{{ item.freshness_label }}</span>
@@ -689,6 +709,7 @@
                 <input id="timeline-search" type="text" placeholder="target, technique, action..." />
                 <button type="button" id="timeline-reset">Reset</button>
               </div>
+              <div id="timeline-filter-chips" class="filter-chips"></div>
               {% if notebook.timeline_compact_rows %}
               <table class="timeline-table">
                 <thead>
@@ -724,13 +745,27 @@
           </details>
         </section>
 
-        <section class="card span-2" data-step="action">
+        <section class="card span-2" data-step="action" id="section-history">
           <h2 class="section-title">3) Analyst Interpretation Over Time</h2>
           <p class="deemphasized" style="margin:0 0 8px;">
             Capture and review source-linked observations to track how assessment evolves over time.
           </p>
           <div class="interactive-panel">
             <h4>Observation Ledger</h4>
+            <div class="review-strip">
+              <h4>What Changed Since Last Review</h4>
+              <div class="review-grid">
+                <div class="review-metric"><div class="label">Since</div><div class="value" id="since-review-date">Not set</div></div>
+                <div class="review-metric"><div class="label">Observations</div><div class="value" id="since-review-observations">0</div></div>
+                <div class="review-metric"><div class="label">Recent Sources</div><div class="value" id="since-review-sources">0</div></div>
+                <div class="review-metric"><div class="label">Reports (Current)</div><div class="value" id="since-review-reports">0</div></div>
+              </div>
+              <div class="review-actions">
+                <button type="button" id="mark-reviewed">Mark reviewed now</button>
+                <button type="button" id="clear-reviewed">Clear baseline</button>
+                <span id="review-meta" class="review-meta"></span>
+              </div>
+            </div>
             <div class="ledger-controls">
               <div>
                 <label for="ledger-filter-analyst">Analyst</label>
@@ -762,12 +797,13 @@
                 </select>
               </div>
             </div>
+            <div id="ledger-filter-chips" class="filter-chips"></div>
             <div class="ledger-actions">
               <button type="button" id="ledger-apply">Apply filters</button>
               <button type="button" id="ledger-clear">Clear</button>
               <a id="ledger-export-json" href="#" target="_blank" rel="noreferrer">Export JSON</a>
               <a id="ledger-export-csv" href="#" target="_blank" rel="noreferrer">Export CSV</a>
-              <span id="observation-ledger-count" class="ledger-count"></span>
+                <span id="observation-ledger-count" class="ledger-count"></span>
             </div>
             <div id="observation-ledger-empty" class="timeline-empty">No observations saved yet.</div>
             <div id="observation-ledger-list" class="ledger-list"></div>
@@ -824,7 +860,7 @@
         </section>
         {% endif %}
 
-        <section class="card span-2" data-step="recent">
+        <section class="card span-2" data-step="recent" id="section-timeline">
           <h2 class="section-title">4) Visual timeline</h2>
           {% if notebook.actor.notebook_status == 'running' %}
           <div class="notice status-working">Timeline events are being generated from source evidence.</div>
@@ -882,6 +918,12 @@
         </div>
         {% endif %}
       </main>
+    </div>
+    <div id="cmdk-overlay" class="cmdk-overlay" aria-hidden="true">
+      <div class="cmdk-panel">
+        <input id="cmdk-input" class="cmdk-input" type="text" placeholder="Jump to section or run action..." />
+        <div id="cmdk-list" class="cmdk-list"></div>
+      </div>
     </div>
     {% if notebook %}
     <script>
@@ -956,10 +998,12 @@
         const timelineRows = Array.from(document.querySelectorAll("#timeline-filter-body tr"));
         const timelineEmpty = document.getElementById("timeline-empty");
         const timelineReset = document.getElementById("timeline-reset");
+        const timelineFilterChips = document.getElementById("timeline-filter-chips");
         const observationCards = Array.from(document.querySelectorAll("[data-observation-item-type][data-observation-item-key]"));
         const observationLedgerList = document.getElementById("observation-ledger-list");
         const observationLedgerEmpty = document.getElementById("observation-ledger-empty");
         const observationLedgerCount = document.getElementById("observation-ledger-count");
+        const ledgerFilterChips = document.getElementById("ledger-filter-chips");
         const ledgerFilterAnalyst = document.getElementById("ledger-filter-analyst");
         const ledgerFilterConfidence = document.getElementById("ledger-filter-confidence");
         const ledgerFilterFrom = document.getElementById("ledger-filter-from");
@@ -969,6 +1013,18 @@
         const ledgerClear = document.getElementById("ledger-clear");
         const ledgerExportJson = document.getElementById("ledger-export-json");
         const ledgerExportCsv = document.getElementById("ledger-export-csv");
+        const cmdkOverlay = document.getElementById("cmdk-overlay");
+        const cmdkInput = document.getElementById("cmdk-input");
+        const cmdkList = document.getElementById("cmdk-list");
+        const sinceReviewDate = document.getElementById("since-review-date");
+        const sinceReviewObservations = document.getElementById("since-review-observations");
+        const sinceReviewSources = document.getElementById("since-review-sources");
+        const sinceReviewReports = document.getElementById("since-review-reports");
+        const markReviewed = document.getElementById("mark-reviewed");
+        const clearReviewed = document.getElementById("clear-reviewed");
+        const reviewMeta = document.getElementById("review-meta");
+        const sourceDateNodes = Array.from(document.querySelectorAll("#latest-sources-list li[data-source-date]"));
+        const reviewStorageKey = "tracker:lastReview:" + actorId;
 
         function applyTimelineFilter() {
           const severity = (severitySelect && severitySelect.value || "").toLowerCase();
@@ -987,6 +1043,31 @@
             if (visible) visibleCount += 1;
           });
           if (timelineEmpty) timelineEmpty.style.display = visibleCount === 0 ? "" : "none";
+          renderTimelineChips();
+        }
+
+        function addChip(container, label, onRemove) {
+          if (!container) return;
+          const chip = document.createElement("span");
+          chip.className = "filter-chip";
+          chip.textContent = label + " ";
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = "x";
+          button.addEventListener("click", onRemove);
+          chip.appendChild(button);
+          container.appendChild(chip);
+        }
+
+        function renderTimelineChips() {
+          if (!timelineFilterChips) return;
+          timelineFilterChips.innerHTML = "";
+          const severity = (severitySelect && severitySelect.value || "").trim();
+          const category = (categorySelect && categorySelect.value || "").trim();
+          const query = (searchInput && searchInput.value || "").trim();
+          if (severity) addChip(timelineFilterChips, "Severity: " + severity, () => { if (severitySelect) severitySelect.value = ""; applyTimelineFilter(); });
+          if (category) addChip(timelineFilterChips, "Category: " + category, () => { if (categorySelect) categorySelect.value = ""; applyTimelineFilter(); });
+          if (query) addChip(timelineFilterChips, "Text: " + query, () => { if (searchInput) searchInput.value = ""; applyTimelineFilter(); });
         }
 
         [severitySelect, categorySelect, searchInput].forEach((element) => {
@@ -1040,6 +1121,15 @@
           if (ledgerExportCsv) ledgerExportCsv.href = "/actors/" + encodeURIComponent(actorId) + "/observations/export.csv" + query;
         }
 
+        function renderLedgerChips(filters) {
+          if (!ledgerFilterChips) return;
+          ledgerFilterChips.innerHTML = "";
+          if (filters.analyst) addChip(ledgerFilterChips, "Analyst: " + filters.analyst, () => { if (ledgerFilterAnalyst) ledgerFilterAnalyst.value = ""; renderObservationLedger(); });
+          if (filters.confidence) addChip(ledgerFilterChips, "Confidence: " + filters.confidence, () => { if (ledgerFilterConfidence) ledgerFilterConfidence.value = ""; renderObservationLedger(); });
+          if (filters.updated_from) addChip(ledgerFilterChips, "From: " + filters.updated_from, () => { if (ledgerFilterFrom) ledgerFilterFrom.value = ""; renderObservationLedger(); });
+          if (filters.updated_to) addChip(ledgerFilterChips, "To: " + filters.updated_to, () => { if (ledgerFilterTo) ledgerFilterTo.value = ""; renderObservationLedger(); });
+        }
+
         function applyObservationCard(card) {
           const itemType = card.dataset.observationItemType || "";
           const itemKey = card.dataset.observationItemKey || "";
@@ -1072,6 +1162,7 @@
           observationLedgerList.innerHTML = "";
           const filters = ledgerFilters();
           updateLedgerExportLinks(filters);
+          renderLedgerChips(filters);
           const items = Array.from(observationStore.values())
             .filter((item) => {
               const by = String(item.updated_by || "").toLowerCase();
@@ -1127,7 +1218,169 @@
             }
             observationLedgerList.appendChild(wrap);
           });
+          renderSinceReview();
         }
+
+        function parseIsoDate(value) {
+          const raw = String(value || "").trim();
+          if (!raw) return null;
+          const normalized = raw.replace("Z", "+00:00");
+          const dt = new Date(normalized);
+          if (!Number.isNaN(dt.getTime())) return dt;
+          if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+            const dt2 = new Date(raw + "T00:00:00Z");
+            return Number.isNaN(dt2.getTime()) ? null : dt2;
+          }
+          return null;
+        }
+
+        function sourceDateCandidates() {
+          return sourceDateNodes
+            .map((node) => {
+              const attr = String(node.getAttribute("data-source-date") || "").trim();
+              const badge = node.querySelector(".badge");
+              const badgeText = badge ? String(badge.textContent || "").trim() : "";
+              return attr || badgeText;
+            })
+            .filter((v) => v);
+        }
+
+        function renderSinceReview() {
+          const baselineRaw = localStorage.getItem(reviewStorageKey) || "";
+          const baseline = parseIsoDate(baselineRaw);
+          if (!baseline) {
+            if (sinceReviewDate) sinceReviewDate.textContent = "Not set";
+            if (sinceReviewObservations) sinceReviewObservations.textContent = "0";
+            if (sinceReviewSources) sinceReviewSources.textContent = "0";
+            if (sinceReviewReports && reportNode) sinceReviewReports.textContent = String(reportNode.textContent || "0");
+            if (reviewMeta) reviewMeta.textContent = "Set a baseline date to track changes between review cycles.";
+            return;
+          }
+          if (sinceReviewDate) sinceReviewDate.textContent = baseline.toISOString().slice(0, 10);
+          const obsCount = Array.from(observationStore.values()).filter((item) => {
+            const dt = parseIsoDate(item.updated_at);
+            return dt && dt >= baseline;
+          }).length;
+          if (sinceReviewObservations) sinceReviewObservations.textContent = String(obsCount);
+          const sourceCount = sourceDateCandidates().filter((value) => {
+            const dt = parseIsoDate(value);
+            return dt && dt >= baseline;
+          }).length;
+          if (sinceReviewSources) sinceReviewSources.textContent = String(sourceCount);
+          if (sinceReviewReports && reportNode) sinceReviewReports.textContent = String(reportNode.textContent || "0");
+          if (reviewMeta) reviewMeta.textContent = "Baseline stored locally for this actor on this browser.";
+        }
+
+        if (markReviewed) {
+          markReviewed.addEventListener("click", () => {
+            localStorage.setItem(reviewStorageKey, new Date().toISOString());
+            renderSinceReview();
+          });
+        }
+        if (clearReviewed) {
+          clearReviewed.addEventListener("click", () => {
+            localStorage.removeItem(reviewStorageKey);
+            renderSinceReview();
+          });
+        }
+
+        function scrollToStep(selector) {
+          const node = document.querySelector(selector);
+          if (!node) return;
+          node.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+
+        const commandActions = [
+          { label: "Go to Who section", run: () => scrollToStep("#section-who") },
+          { label: "Go to Recent section", run: () => scrollToStep("#section-recent") },
+          { label: "Go to Interpretation section", run: () => scrollToStep("#section-history") },
+          { label: "Go to Timeline section", run: () => scrollToStep("#section-timeline") },
+          { label: "Focus mode: Full flow", run: () => applyFlow("all") },
+          { label: "Focus mode: Who", run: () => applyFlow("who") },
+          { label: "Focus mode: Recent", run: () => applyFlow("recent") },
+          { label: "Focus mode: Action", run: () => applyFlow("action") },
+          { label: "Refresh live now", run: () => runLiveRefresh() },
+          { label: "Open timeline details", run: () => window.open("/actors/" + encodeURIComponent(actorId) + "/timeline/details", "_blank", "noopener,noreferrer") },
+          { label: "Export observations CSV", run: () => window.open("/actors/" + encodeURIComponent(actorId) + "/observations/export.csv", "_blank", "noopener,noreferrer") },
+          { label: "Export observations JSON", run: () => window.open("/actors/" + encodeURIComponent(actorId) + "/observations/export.json", "_blank", "noopener,noreferrer") },
+        ];
+        let commandCursor = 0;
+        let visibleCommands = commandActions.slice();
+
+        function renderCommandPalette() {
+          if (!cmdkList || !cmdkInput) return;
+          const query = String(cmdkInput.value || "").trim().toLowerCase();
+          visibleCommands = commandActions.filter((item) => item.label.toLowerCase().includes(query));
+          if (!visibleCommands.length) {
+            cmdkList.innerHTML = '<div class="cmdk-empty">No matching actions.</div>';
+            commandCursor = 0;
+            return;
+          }
+          if (commandCursor >= visibleCommands.length) commandCursor = 0;
+          cmdkList.innerHTML = "";
+          visibleCommands.forEach((item, idx) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "cmdk-item" + (idx === commandCursor ? " active" : "");
+            button.textContent = item.label;
+            button.addEventListener("click", () => {
+              closeCommandPalette();
+              item.run();
+            });
+            cmdkList.appendChild(button);
+          });
+        }
+
+        function openCommandPalette() {
+          if (!cmdkOverlay || !cmdkInput) return;
+          cmdkOverlay.classList.add("open");
+          cmdkOverlay.setAttribute("aria-hidden", "false");
+          cmdkInput.value = "";
+          commandCursor = 0;
+          renderCommandPalette();
+          cmdkInput.focus();
+        }
+
+        function closeCommandPalette() {
+          if (!cmdkOverlay) return;
+          cmdkOverlay.classList.remove("open");
+          cmdkOverlay.setAttribute("aria-hidden", "true");
+        }
+
+        document.addEventListener("keydown", (event) => {
+          const isCommandK = (event.key.toLowerCase() === "k") && (event.metaKey || event.ctrlKey);
+          if (isCommandK) {
+            event.preventDefault();
+            if (cmdkOverlay && cmdkOverlay.classList.contains("open")) closeCommandPalette();
+            else openCommandPalette();
+            return;
+          }
+          if (!cmdkOverlay || !cmdkOverlay.classList.contains("open")) return;
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closeCommandPalette();
+            return;
+          }
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            commandCursor = Math.min(commandCursor + 1, Math.max(visibleCommands.length - 1, 0));
+            renderCommandPalette();
+            return;
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            commandCursor = Math.max(commandCursor - 1, 0);
+            renderCommandPalette();
+            return;
+          }
+          if (event.key === "Enter" && visibleCommands[commandCursor]) {
+            event.preventDefault();
+            closeCommandPalette();
+            visibleCommands[commandCursor].run();
+          }
+        });
+        if (cmdkInput) cmdkInput.addEventListener("input", () => { commandCursor = 0; renderCommandPalette(); });
+        if (cmdkOverlay) cmdkOverlay.addEventListener("click", (event) => { if (event.target === cmdkOverlay) closeCommandPalette(); });
 
         async function loadObservations() {
           try {
@@ -1199,6 +1452,8 @@
         }
 
         loadObservations();
+        renderTimelineChips();
+        renderSinceReview();
 
       })();
     </script>
