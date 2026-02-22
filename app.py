@@ -20,6 +20,7 @@ import httpx
 import guidance_catalog
 import mitre_store
 import priority_questions
+import timeline_extraction
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -1166,44 +1167,15 @@ def _recent_change_summary(
 
 
 def _extract_target_hint(sentence: str) -> str:
-    patterns = [
-        r'\btarget(?:ed|ing)?\s+([A-Z][A-Za-z0-9&\-/ ]{3,80})',
-        r'\bagainst\s+([A-Z][A-Za-z0-9&\-/ ]{3,80})',
-        r'\bvictims?\s+include\s+([A-Z][A-Za-z0-9&\-/ ,]{3,100})',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, sentence)
-        if not match:
-            continue
-        target = ' '.join(match.group(1).split())
-        target = re.sub(r'[.,;:]+$', '', target)
-        if len(target) >= 4:
-            return target[:90]
-    return ''
+    return timeline_extraction.extract_target_hint(sentence)
 
 
 def _sentence_mentions_actor_terms(sentence: str, actor_terms: list[str]) -> bool:
-    lowered = sentence.lower()
-    for term in actor_terms:
-        value = term.strip().lower()
-        if not value:
-            continue
-        escaped = re.escape(value).replace(r'\ ', r'\s+')
-        pattern = rf'(?<![a-z0-9]){escaped}(?![a-z0-9])'
-        if re.search(pattern, lowered):
-            return True
-    return False
+    return timeline_extraction.sentence_mentions_actor_terms(sentence, actor_terms)
 
 
 def _looks_like_activity_sentence(sentence: str) -> bool:
-    lowered = sentence.lower()
-    verbs = (
-        'target', 'attack', 'exploit', 'compromise', 'phish', 'deploy',
-        'ransom', 'encrypt', 'exfiltrat', 'move laterally', 'beacon',
-        'used', 'leveraged', 'abused', 'campaign', 'operation',
-        'activity', 'incident', 'disclosure', 'victim',
-    )
-    return any(token in lowered for token in verbs)
+    return timeline_extraction.looks_like_activity_sentence(sentence)
 
 
 def _actor_terms(actor_name: str, mitre_group_name: str, aliases_csv: str) -> list[str]:
@@ -1413,21 +1385,7 @@ def _build_recent_activity_highlights(
 
 
 def _extract_target_from_activity_text(text: str) -> str:
-    patterns = [
-        r'\bstrikes?\s+([A-Z][A-Za-z0-9&\-/ ]{3,90})',
-        r'\battack(?:ed)?\s+on\s+([A-Z][A-Za-z0-9&\-/ ]{3,90})',
-        r'\bagainst\s+([A-Z][A-Za-z0-9&\-/ ]{3,90})',
-        r'\btarget(?:ed|ing)?\s+([A-Z][A-Za-z0-9&\-/ ]{3,90})',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
-        if not match:
-            continue
-        target = ' '.join(match.group(1).split())
-        target = re.sub(r'[.,;:|]+$', '', target).strip()
-        if len(target) >= 4:
-            return target[:90]
-    return ''
+    return timeline_extraction.extract_target_from_activity_text(text)
 
 
 def _build_recent_activity_synthesis(
@@ -1534,24 +1492,7 @@ def _build_recent_activity_synthesis(
 
 
 def _timeline_category_from_sentence(sentence: str) -> str | None:
-    lowered = sentence.lower()
-    if any(token in lowered for token in ('phish', 'email', 'exploit', 'initial access', 'cve-')):
-        return 'initial_access'
-    if any(token in lowered for token in ('powershell', 'wmi', 'command', 'execution')):
-        return 'execution'
-    if any(token in lowered for token in ('scheduled task', 'startup', 'registry run key', 'persistence')):
-        return 'persistence'
-    if any(token in lowered for token in ('lateral movement', 'remote service', 'rdp', 'smb', 'pivot')):
-        return 'lateral_movement'
-    if any(token in lowered for token in ('dns', 'beacon', 'c2', 'command and control')):
-        return 'command_and_control'
-    if any(token in lowered for token in ('exfiltrat', 'stolen data', 'collection')):
-        return 'exfiltration'
-    if any(token in lowered for token in ('ransom', 'encrypt', 'wiper', 'impact')):
-        return 'impact'
-    if any(token in lowered for token in ('defense evasion', 'disable', 'tamper', 'obfuscat')):
-        return 'defense_evasion'
-    return None
+    return timeline_extraction.timeline_category_from_sentence(sentence)
 
 
 def _extract_major_move_events(
@@ -1561,35 +1502,18 @@ def _extract_major_move_events(
     text: str,
     actor_terms: list[str],
 ) -> list[dict[str, object]]:
-    events: list[dict[str, object]] = []
-    for sentence in _split_sentences(text):
-        if not _sentence_mentions_actor_terms(sentence, actor_terms):
-            continue
-        if not _looks_like_activity_sentence(sentence):
-            continue
-        category = _timeline_category_from_sentence(sentence)
-        if category is None:
-            continue
-        summary = ' '.join(sentence.split())
-        if len(summary) > 260:
-            summary = summary[:260].rsplit(' ', 1)[0] + '...'
-        target_hint = _extract_target_hint(sentence)
-        ttp_ids = _extract_ttp_ids(sentence)
-        title = f'{category.replace("_", " ").title()} move'
-        events.append(
-            {
-                'id': str(uuid.uuid4()),
-                'occurred_at': occurred_at,
-                'category': category,
-                'title': title,
-                'summary': summary,
-                'source_id': source_id,
-                'source_name': source_name,
-                'target_text': target_hint,
-                'ttp_ids': ttp_ids,
-            }
-        )
-    return events
+    return timeline_extraction.extract_major_move_events(
+        source_name,
+        source_id,
+        occurred_at,
+        text,
+        actor_terms,
+        deps={
+            'split_sentences': _split_sentences,
+            'extract_ttp_ids': _extract_ttp_ids,
+            'new_id': lambda: str(uuid.uuid4()),
+        },
+    )
 
 
 def _guidance_for_platform(platform: str, question_text: str) -> dict[str, str | None]:

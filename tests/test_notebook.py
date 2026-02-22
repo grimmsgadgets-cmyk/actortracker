@@ -276,6 +276,49 @@ def test_platforms_for_question_dedupes_and_prioritizes_expected_domains():
     assert 'EDR' in platforms
 
 
+def test_extract_major_move_events_wrapper_delegates_to_timeline_module(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def _fake_extract_major_move_events(source_name, source_id, occurred_at, text, actor_terms, **kwargs):
+        captured['source_name'] = source_name
+        captured['source_id'] = source_id
+        captured['occurred_at'] = occurred_at
+        captured['text'] = text
+        captured['actor_terms'] = actor_terms
+        captured.update(kwargs)
+        return [{'id': 'evt-1'}]
+
+    monkeypatch.setattr(app_module.timeline_extraction, 'extract_major_move_events', _fake_extract_major_move_events)
+
+    events = app_module._extract_major_move_events(  # noqa: SLF001
+        'CISA',
+        'src-1',
+        '2026-02-20T00:00:00+00:00',
+        'APT-Flow exploited edge devices.',
+        ['apt-flow'],
+    )
+
+    assert events == [{'id': 'evt-1'}]
+    assert captured['source_name'] == 'CISA'
+    assert callable(captured['deps']['split_sentences'])
+    assert callable(captured['deps']['extract_ttp_ids'])
+    assert callable(captured['deps']['new_id'])
+
+
+def test_extract_major_move_events_behavior_classifies_and_targets():
+    events = app_module._extract_major_move_events(  # noqa: SLF001
+        'CISA',
+        'src-1',
+        '2026-02-20T00:00:00+00:00',
+        'APT-Flow targeted Acme Hospital and used PowerShell execution for access.',
+        ['apt-flow'],
+    )
+
+    assert events
+    assert events[0]['category'] == 'execution'
+    assert 'Acme Hospital' in str(events[0]['target_text'])
+
+
 def test_validate_outbound_url_blocks_localhost():
     with pytest.raises(app_module.HTTPException):
         app_module._validate_outbound_url('http://localhost/internal')  # noqa: SLF001
