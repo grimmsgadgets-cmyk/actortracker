@@ -39,9 +39,9 @@
       }
       .main { padding: 16px; }
       .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
-      .card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px; margin-bottom: 0; }
+      .card { background: #fff; border: 1px solid #d9e2ef; border-radius: 10px; padding: 14px; margin-bottom: 0; box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03); }
       .card.span-2 { grid-column: 1 / -1; }
-      .section-title { margin-top: 0; margin-bottom: 10px; font-size: 18px; line-height: 1.25; }
+      .section-title { margin-top: 0; margin-bottom: 10px; font-size: 18px; line-height: 1.25; padding-bottom: 6px; border-bottom: 1px solid #e8eef8; }
       .section-body { padding-right: 2px; }
       .section-body p { margin: 0 0 10px; }
       .section-body ul { margin-top: 6px; }
@@ -120,8 +120,11 @@
       .badge.freshness-old { background: #f4f5f7; border-color: #c8ced8; }
       .badge.freshness-unknown { background: #f4f5f7; border-color: #c8ced8; }
       .source-item { border-bottom: 1px solid #e3e3e3; padding: 8px 0; }
-      .recent-source-list { margin: 6px 0 0; padding-left: 18px; }
-      .recent-source-list li { margin: 4px 0; font-size: 13px; }
+      .recent-source-list { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+      .recent-source-list li { margin: 0; font-size: 13px; border: 1px solid #e4ebf7; border-radius: 8px; background: #fbfdff; padding: 8px; }
+      .source-headline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
+      .source-meta { display: block; color: #475569; font-size: 11px; line-height: 1.35; margin-bottom: 2px; }
+      .source-note-toggle { margin-top: 6px; }
       .source-title-link {
         display: inline-block;
         max-width: 56ch;
@@ -484,15 +487,17 @@
             {% endif %}
             {% set observation_key = item.source_id or item.timeline_event_id or ('highlight-' ~ loop.index0) %}
             <li>
-              <span class="badge">{{ item.date }}</span>
-              <span class="badge {{ item.freshness_class }}">{{ item.freshness_label }}</span>
-              {% if item.source_url %}
-              <a class="source-title-link" href="{{ item.source_url }}" target="_blank" rel="noreferrer">{{ display_title }}</a>
-              {% else %}
-              <span class="source-title-link">{{ display_title }}</span>
-              {% endif %}
-              <small>{{ item.evidence_source_label or item.source_name or 'Unknown source' }} | corroboration: {{ item.corroboration_sources or '1' }} source(s)</small>
-              <details class="compact">
+              <div class="source-headline">
+                <span class="badge">{{ item.date }}</span>
+                <span class="badge {{ item.freshness_class }}">{{ item.freshness_label }}</span>
+                {% if item.source_url %}
+                <a class="source-title-link" href="{{ item.source_url }}" target="_blank" rel="noreferrer">{{ display_title }}</a>
+                {% else %}
+                <span class="source-title-link">{{ display_title }}</span>
+                {% endif %}
+              </div>
+              <small class="source-meta">{{ item.evidence_source_label or item.source_name or 'Unknown source' }} | corroboration: {{ item.corroboration_sources or '1' }} source(s)</small>
+              <details class="compact source-note-toggle">
                 <summary>Analyst observation (optional)</summary>
                 <div class="interactive-panel" data-observation-item-type="source" data-observation-item-key="{{ observation_key }}">
                   <p class="inline-note" style="margin:0 0 6px;"><strong>Reference format:</strong> note + confidence + source reliability (A-F) + information credibility (1-6).</p>
@@ -552,7 +557,7 @@
             <summary>All sources</summary>
             <div class="event">
               <div><strong>Recent sources</strong></div>
-              <ul class="summary-list">
+              <ul class="recent-source-list">
                 {% for item in notebook.recent_activity_highlights %}
                 {% set raw_title = (item.evidence_title or 'Untitled article') %}
                 {% if raw_title.startswith('http://') or raw_title.startswith('https://') or (raw_title.count('/') >= 2 and ' ' not in raw_title) %}
@@ -561,18 +566,20 @@
                 {% set display_title = raw_title %}
                 {% endif %}
                 <li>
-                  <span class="badge">{{ item.date }}</span>
-                  <span class="badge {{ item.freshness_class }}">{{ item.freshness_label }}</span>
-                  {% if item.source_url %}
-                  <a href="{{ item.source_url }}" target="_blank" rel="noreferrer">{{ display_title }}</a>
-                  {% else %}
-                  {{ display_title }}
-                  {% endif %}
-                  <small>{{ item.evidence_source_label or item.source_name or 'Unknown source' }} | corroboration: {{ item.corroboration_sources or '1' }} source(s)</small>
-                  {% if item.category %}<span class="badge">{{ item.category }}</span>{% endif %}
-                  {% if item.ttp_ids %}<span class="badge">{{ item.ttp_ids }}</span>{% endif %}
+                  <div class="source-headline">
+                    <span class="badge">{{ item.date }}</span>
+                    <span class="badge {{ item.freshness_class }}">{{ item.freshness_label }}</span>
+                    {% if item.source_url %}
+                    <a class="source-title-link" href="{{ item.source_url }}" target="_blank" rel="noreferrer">{{ display_title }}</a>
+                    {% else %}
+                    <span class="source-title-link">{{ display_title }}</span>
+                    {% endif %}
+                    {% if item.category %}<span class="badge">{{ item.category }}</span>{% endif %}
+                    {% if item.ttp_ids %}<span class="badge">{{ item.ttp_ids }}</span>{% endif %}
+                  </div>
+                  <small class="source-meta">{{ item.evidence_source_label or item.source_name or 'Unknown source' }} | corroboration: {{ item.corroboration_sources or '1' }} source(s)</small>
                   {% set all_observation_key = item.source_id or item.timeline_event_id or ('all-highlight-' ~ loop.index0) %}
-                  <details class="compact">
+                  <details class="compact source-note-toggle">
                     <summary>Analyst observation (optional)</summary>
                     <div class="interactive-panel" data-observation-item-type="source" data-observation-item-key="{{ all_observation_key }}">
                       <p class="inline-note" style="margin:0 0 6px;"><strong>Reference format:</strong> note + confidence + source reliability (A-F) + information credibility (1-6).</p>
@@ -662,8 +669,13 @@
                 <label for="timeline-category">Category</label>
                 <select id="timeline-category">
                   <option value="">All</option>
+                  {% set timeline_categories = namespace(seen=[]) %}
                   {% for item in notebook.timeline_compact_rows %}
-                  <option value="{{ item.category|lower }}">{{ item.category }}</option>
+                  {% set category_value = (item.category or '')|lower %}
+                  {% if category_value and category_value not in timeline_categories.seen %}
+                  {% set _ = timeline_categories.seen.append(category_value) %}
+                  <option value="{{ category_value }}">{{ item.category }}</option>
+                  {% endif %}
                   {% endfor %}
                 </select>
                 <label for="timeline-search">Contains</label>
