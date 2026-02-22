@@ -1,5 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse
+from datetime import datetime
 
 
 def render_dashboard_root(
@@ -18,8 +19,21 @@ def render_dashboard_root(
     _format_duration_ms = deps['format_duration_ms']
     _templates = deps['templates']
 
+    def _actor_last_updated_label(actor: dict[str, object]) -> str:
+        raw_value = str(actor.get('notebook_updated_at') or actor.get('created_at') or '').strip()
+        if not raw_value:
+            return 'Unknown'
+        normalized = raw_value.replace('Z', '+00:00')
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            return parsed.strftime('%Y-%m-%d')
+        except ValueError:
+            return raw_value[:10]
+
     actors_all = _list_actor_profiles()
     tracked_actors = [actor for actor in actors_all if actor['is_tracked']]
+    for actor in tracked_actors:
+        actor['last_updated_label'] = _actor_last_updated_label(actor)
 
     selected_actor_id = actor_id
     all_actor_ids = {actor['id'] for actor in actors_all}

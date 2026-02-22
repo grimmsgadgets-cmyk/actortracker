@@ -1,9 +1,12 @@
 import html
+import io
 import sqlite3
 import uuid
+import csv
+from datetime import date
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 
 def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
@@ -18,6 +21,104 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
     _fetch_actor_notebook = deps['fetch_actor_notebook']
     _templates = deps['templates']
     _actor_exists = deps['actor_exists']
+
+    def _fetch_analyst_observations(
+        actor_id: str,
+        *,
+        analyst: str | None = None,
+        confidence: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+    ) -> list[dict[str, object]]:
+        where_clauses = ['actor_id = ?']
+        params: list[object] = [actor_id]
+
+        analyst_text = str(analyst or '').strip().lower()
+        if analyst_text:
+            where_clauses.append('LOWER(updated_by) LIKE ?')
+            params.append(f'%{analyst_text}%')
+
+        confidence_value = str(confidence or '').strip().lower()
+        if confidence_value in {'low', 'moderate', 'high'}:
+            where_clauses.append('confidence = ?')
+            params.append(confidence_value)
+
+        from_value = str(updated_from or '').strip()
+        if from_value:
+            try:
+                parsed_from = date.fromisoformat(from_value)
+                where_clauses.append('substr(updated_at, 1, 10) >= ?')
+                params.append(parsed_from.isoformat())
+            except ValueError:
+                pass
+
+        to_value = str(updated_to or '').strip()
+        if to_value:
+            try:
+                parsed_to = date.fromisoformat(to_value)
+                where_clauses.append('substr(updated_at, 1, 10) <= ?')
+                params.append(parsed_to.isoformat())
+            except ValueError:
+                pass
+
+        with sqlite3.connect(_db_path()) as connection:
+            if not _actor_exists(connection, actor_id):
+                raise HTTPException(status_code=404, detail='actor not found')
+            rows = connection.execute(
+                f'''
+                SELECT item_type, item_key, note, source_ref, confidence,
+                       source_reliability, information_credibility, updated_by, updated_at
+                FROM analyst_observations
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY updated_at DESC
+                ''',
+                params,
+            ).fetchall()
+            source_keys = sorted(
+                {
+                    str(row[1])
+                    for row in rows
+                    if str(row[0] or '').strip().lower() == 'source' and str(row[1] or '').strip()
+                }
+            )
+            source_lookup: dict[str, dict[str, str]] = {}
+            if source_keys:
+                placeholders = ','.join('?' for _ in source_keys)
+                source_rows = connection.execute(
+                    f'''
+                    SELECT id, source_name, url, title, published_at, retrieved_at
+                    FROM sources
+                    WHERE actor_id = ? AND id IN ({placeholders})
+                    ''',
+                    (actor_id, *source_keys),
+                ).fetchall()
+                source_lookup = {
+                    str(source_row[0]): {
+                        'source_name': str(source_row[1] or ''),
+                        'source_url': str(source_row[2] or ''),
+                        'source_title': str(source_row[3] or ''),
+                        'source_date': str(source_row[4] or source_row[5] or ''),
+                    }
+                    for source_row in source_rows
+                }
+        return [
+            {
+                'item_type': row[0],
+                'item_key': row[1],
+                'note': row[2] or '',
+                'source_ref': row[3] or '',
+                'confidence': row[4] or 'moderate',
+                'source_reliability': row[5] or '',
+                'information_credibility': row[6] or '',
+                'updated_by': row[7] or '',
+                'updated_at': row[8] or '',
+                'source_name': source_lookup.get(str(row[1]), {}).get('source_name', ''),
+                'source_url': source_lookup.get(str(row[1]), {}).get('source_url', ''),
+                'source_title': source_lookup.get(str(row[1]), {}).get('source_title', ''),
+                'source_date': source_lookup.get(str(row[1]), {}).get('source_date', ''),
+            }
+            for row in rows
+        ]
 
     @router.post('/actors/{actor_id}/requirements/generate')
     async def generate_requirements(actor_id: str, request: Request) -> RedirectResponse:
@@ -194,66 +295,113 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
         }
 
     @router.get('/actors/{actor_id}/observations', response_class=JSONResponse)
-    def list_observations(actor_id: str) -> dict[str, object]:
-        with sqlite3.connect(_db_path()) as connection:
-            if not _actor_exists(connection, actor_id):
-                raise HTTPException(status_code=404, detail='actor not found')
-            rows = connection.execute(
-                '''
-                SELECT item_type, item_key, note, source_ref, confidence,
-                       source_reliability, information_credibility, updated_by, updated_at
-                FROM analyst_observations
-                WHERE actor_id = ?
-                ORDER BY updated_at DESC
-                ''',
-                (actor_id,),
-            ).fetchall()
-            source_keys = [
-                str(row[1])
-                for row in rows
-                if str(row[0] or '').strip().lower() == 'source' and str(row[1] or '').strip()
-            ]
-            source_lookup: dict[str, dict[str, str]] = {}
-            if source_keys:
-                placeholders = ','.join('?' for _ in source_keys)
-                source_rows = connection.execute(
-                    f'''
-                    SELECT id, source_name, url, title, published_at, retrieved_at
-                    FROM sources
-                    WHERE actor_id = ? AND id IN ({placeholders})
-                    ''',
-                    (actor_id, *source_keys),
-                ).fetchall()
-                source_lookup = {
-                    str(source_row[0]): {
-                        'source_name': str(source_row[1] or ''),
-                        'source_url': str(source_row[2] or ''),
-                        'source_title': str(source_row[3] or ''),
-                        'source_date': str(source_row[4] or source_row[5] or ''),
-                    }
-                    for source_row in source_rows
-                }
+    def list_observations(
+        actor_id: str,
+        analyst: str | None = None,
+        confidence: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+    ) -> dict[str, object]:
+        items = _fetch_analyst_observations(
+            actor_id,
+            analyst=analyst,
+            confidence=confidence,
+            updated_from=updated_from,
+            updated_to=updated_to,
+        )
         return {
             'actor_id': actor_id,
-            'items': [
-                {
-                    'item_type': row[0],
-                    'item_key': row[1],
-                    'note': row[2] or '',
-                    'source_ref': row[3] or '',
-                    'confidence': row[4] or 'moderate',
-                    'source_reliability': row[5] or '',
-                    'information_credibility': row[6] or '',
-                    'updated_by': row[7] or '',
-                    'updated_at': row[8] or '',
-                    'source_name': source_lookup.get(str(row[1]), {}).get('source_name', ''),
-                    'source_url': source_lookup.get(str(row[1]), {}).get('source_url', ''),
-                    'source_title': source_lookup.get(str(row[1]), {}).get('source_title', ''),
-                    'source_date': source_lookup.get(str(row[1]), {}).get('source_date', ''),
-                }
-                for row in rows
-            ],
+            'items': items,
         }
+
+    @router.get('/actors/{actor_id}/observations/export.json', response_class=JSONResponse)
+    def export_observations_json(
+        actor_id: str,
+        analyst: str | None = None,
+        confidence: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+    ) -> dict[str, object]:
+        items = _fetch_analyst_observations(
+            actor_id,
+            analyst=analyst,
+            confidence=confidence,
+            updated_from=updated_from,
+            updated_to=updated_to,
+        )
+        return {
+            'actor_id': actor_id,
+            'count': len(items),
+            'filters': {
+                'analyst': analyst or '',
+                'confidence': confidence or '',
+                'updated_from': updated_from or '',
+                'updated_to': updated_to or '',
+            },
+            'items': items,
+        }
+
+    @router.get('/actors/{actor_id}/observations/export.csv')
+    def export_observations_csv(
+        actor_id: str,
+        analyst: str | None = None,
+        confidence: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+    ) -> Response:
+        items = _fetch_analyst_observations(
+            actor_id,
+            analyst=analyst,
+            confidence=confidence,
+            updated_from=updated_from,
+            updated_to=updated_to,
+        )
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(
+            [
+                'actor_id',
+                'item_type',
+                'item_key',
+                'note',
+                'source_ref',
+                'confidence',
+                'source_reliability',
+                'information_credibility',
+                'updated_by',
+                'updated_at',
+                'source_name',
+                'source_title',
+                'source_url',
+                'source_date',
+            ]
+        )
+        for item in items:
+            writer.writerow(
+                [
+                    actor_id,
+                    item.get('item_type', ''),
+                    item.get('item_key', ''),
+                    item.get('note', ''),
+                    item.get('source_ref', ''),
+                    item.get('confidence', ''),
+                    item.get('source_reliability', ''),
+                    item.get('information_credibility', ''),
+                    item.get('updated_by', ''),
+                    item.get('updated_at', ''),
+                    item.get('source_name', ''),
+                    item.get('source_title', ''),
+                    item.get('source_url', ''),
+                    item.get('source_date', ''),
+                ]
+            )
+        return Response(
+            content=buffer.getvalue(),
+            media_type='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename="{actor_id}-observations.csv"',
+            },
+        )
 
     @router.post('/actors/{actor_id}/observations/{item_type}/{item_key}', response_class=JSONResponse)
     async def upsert_observation(actor_id: str, item_type: str, item_key: str, request: Request) -> dict[str, object]:

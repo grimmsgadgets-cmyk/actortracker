@@ -214,10 +214,16 @@
       .ledger-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 4px; font-size: 11px; color: #475569; }
       .ledger-body { font-size: 13px; line-height: 1.35; color: #1f2937; margin-bottom: 4px; }
       .ledger-link { font-size: 12px; }
+      .ledger-controls { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 8px; align-items: end; margin-top: 8px; }
+      .ledger-controls label { display: block; font-size: 11px; color: #334155; margin-bottom: 3px; }
+      .ledger-controls input, .ledger-controls select { width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid #cdd8ea; border-radius: 6px; background: #fff; font-size: 12px; }
+      .ledger-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+      .ledger-actions button, .ledger-actions a { border: 1px solid #b8c7e2; background: #f7fbff; border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; text-decoration: none; color: #1f2937; }
+      .ledger-count { font-size: 11px; color: #475569; }
       .live-controls { display: inline-flex; gap: 6px; align-items: center; }
       .live-controls button { border: 1px solid #c7d4ea; background: #fff; border-radius: 999px; font-size: 11px; padding: 4px 8px; cursor: pointer; }
       @media (max-width: 1180px) { .dashboard { grid-template-columns: 1fr; } .card.span-2 { grid-column: auto; } .timeline-ataglance { grid-template-columns: 1fr; } .kpi-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); } .snapshot-grid { grid-template-columns: 1fr; } }
-      @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .status-chip { max-width: 100%; width: 100%; } .obs-row { grid-template-columns: 1fr; } }
+      @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .status-chip { max-width: 100%; width: 100%; } .obs-row { grid-template-columns: 1fr; } .ledger-controls { grid-template-columns: 1fr 1fr; } }
     </style>
   </head>
   <body {% if notebook %}data-actor-id="{{ notebook.actor.id }}"{% endif %}>
@@ -231,6 +237,7 @@
             <div class="actor-row">
               <a class="actor-link {% if selected_actor_id == actor.id %}selected{% endif %}" href="/?actor_id={{ actor.id }}">
                 <span class="actor-name">{{ actor.display_name }}</span>
+                <span class="actor-scope">Updated {{ actor.last_updated_label or 'Unknown' }}</span>
               </a>
               <form method="post" action="/actors/{{ actor.id }}/untrack">
                 <button type="submit">Untrack</button>
@@ -724,6 +731,44 @@
           </p>
           <div class="interactive-panel">
             <h4>Observation Ledger</h4>
+            <div class="ledger-controls">
+              <div>
+                <label for="ledger-filter-analyst">Analyst</label>
+                <input id="ledger-filter-analyst" type="text" placeholder="name contains..." />
+              </div>
+              <div>
+                <label for="ledger-filter-confidence">Confidence</label>
+                <select id="ledger-filter-confidence">
+                  <option value="">All</option>
+                  <option value="high">High</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div>
+                <label for="ledger-filter-from">Updated from</label>
+                <input id="ledger-filter-from" type="date" />
+              </div>
+              <div>
+                <label for="ledger-filter-to">Updated to</label>
+                <input id="ledger-filter-to" type="date" />
+              </div>
+              <div>
+                <label for="ledger-limit">Show</label>
+                <select id="ledger-limit">
+                  <option value="12">12</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                </select>
+              </div>
+            </div>
+            <div class="ledger-actions">
+              <button type="button" id="ledger-apply">Apply filters</button>
+              <button type="button" id="ledger-clear">Clear</button>
+              <a id="ledger-export-json" href="#" target="_blank" rel="noreferrer">Export JSON</a>
+              <a id="ledger-export-csv" href="#" target="_blank" rel="noreferrer">Export CSV</a>
+              <span id="observation-ledger-count" class="ledger-count"></span>
+            </div>
             <div id="observation-ledger-empty" class="timeline-empty">No observations saved yet.</div>
             <div id="observation-ledger-list" class="ledger-list"></div>
           </div>
@@ -914,6 +959,16 @@
         const observationCards = Array.from(document.querySelectorAll("[data-observation-item-type][data-observation-item-key]"));
         const observationLedgerList = document.getElementById("observation-ledger-list");
         const observationLedgerEmpty = document.getElementById("observation-ledger-empty");
+        const observationLedgerCount = document.getElementById("observation-ledger-count");
+        const ledgerFilterAnalyst = document.getElementById("ledger-filter-analyst");
+        const ledgerFilterConfidence = document.getElementById("ledger-filter-confidence");
+        const ledgerFilterFrom = document.getElementById("ledger-filter-from");
+        const ledgerFilterTo = document.getElementById("ledger-filter-to");
+        const ledgerLimit = document.getElementById("ledger-limit");
+        const ledgerApply = document.getElementById("ledger-apply");
+        const ledgerClear = document.getElementById("ledger-clear");
+        const ledgerExportJson = document.getElementById("ledger-export-json");
+        const ledgerExportCsv = document.getElementById("ledger-export-csv");
 
         function applyTimelineFilter() {
           const severity = (severitySelect && severitySelect.value || "").toLowerCase();
@@ -959,6 +1014,32 @@
           return (sr || ic) ? sr + ic : "n/a";
         }
 
+        function ledgerFilters() {
+          return {
+            analyst: String((ledgerFilterAnalyst && ledgerFilterAnalyst.value) || "").trim().toLowerCase(),
+            confidence: String((ledgerFilterConfidence && ledgerFilterConfidence.value) || "").trim().toLowerCase(),
+            updated_from: String((ledgerFilterFrom && ledgerFilterFrom.value) || "").trim(),
+            updated_to: String((ledgerFilterTo && ledgerFilterTo.value) || "").trim(),
+            limit: Math.max(1, parseInt(String((ledgerLimit && ledgerLimit.value) || "12"), 10) || 12)
+          };
+        }
+
+        function buildQueryString(filters) {
+          const params = new URLSearchParams();
+          if (filters.analyst) params.set("analyst", filters.analyst);
+          if (filters.confidence) params.set("confidence", filters.confidence);
+          if (filters.updated_from) params.set("updated_from", filters.updated_from);
+          if (filters.updated_to) params.set("updated_to", filters.updated_to);
+          const query = params.toString();
+          return query ? "?" + query : "";
+        }
+
+        function updateLedgerExportLinks(filters) {
+          const query = buildQueryString(filters);
+          if (ledgerExportJson) ledgerExportJson.href = "/actors/" + encodeURIComponent(actorId) + "/observations/export.json" + query;
+          if (ledgerExportCsv) ledgerExportCsv.href = "/actors/" + encodeURIComponent(actorId) + "/observations/export.csv" + query;
+        }
+
         function applyObservationCard(card) {
           const itemType = card.dataset.observationItemType || "";
           const itemKey = card.dataset.observationItemKey || "";
@@ -989,13 +1070,29 @@
         function renderObservationLedger() {
           if (!observationLedgerList || !observationLedgerEmpty) return;
           observationLedgerList.innerHTML = "";
-          const items = Array.from(observationStore.values()).sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+          const filters = ledgerFilters();
+          updateLedgerExportLinks(filters);
+          const items = Array.from(observationStore.values())
+            .filter((item) => {
+              const by = String(item.updated_by || "").toLowerCase();
+              const conf = String(item.confidence || "").toLowerCase();
+              const updated = String(item.updated_at || "").slice(0, 10);
+              if (filters.analyst && !by.includes(filters.analyst)) return false;
+              if (filters.confidence && conf !== filters.confidence) return false;
+              if (filters.updated_from && updated && updated < filters.updated_from) return false;
+              if (filters.updated_to && updated && updated > filters.updated_to) return false;
+              return true;
+            })
+            .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
           if (!items.length) {
             observationLedgerEmpty.style.display = "";
+            if (observationLedgerCount) observationLedgerCount.textContent = "0 shown";
             return;
           }
           observationLedgerEmpty.style.display = "none";
-          items.slice(0, 12).forEach((item) => {
+          const limited = items.slice(0, filters.limit);
+          if (observationLedgerCount) observationLedgerCount.textContent = String(limited.length) + " shown";
+          limited.forEach((item) => {
             const wrap = document.createElement("div");
             wrap.className = "ledger-item";
             const head = document.createElement("div");
@@ -1088,6 +1185,18 @@
             }
           });
         });
+
+        if (ledgerApply) ledgerApply.addEventListener("click", renderObservationLedger);
+        if (ledgerClear) {
+          ledgerClear.addEventListener("click", () => {
+            if (ledgerFilterAnalyst) ledgerFilterAnalyst.value = "";
+            if (ledgerFilterConfidence) ledgerFilterConfidence.value = "";
+            if (ledgerFilterFrom) ledgerFilterFrom.value = "";
+            if (ledgerFilterTo) ledgerFilterTo.value = "";
+            if (ledgerLimit) ledgerLimit.value = "12";
+            renderObservationLedger();
+          });
+        }
 
         loadObservations();
 

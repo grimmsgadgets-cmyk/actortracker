@@ -763,6 +763,129 @@ def test_root_renders_analyst_flow_headings(tmp_path, monkeypatch):
     assert '3) Analyst Interpretation Over Time' in response.text
 
 
+def test_observation_filters_and_exports(tmp_path, monkeypatch):
+    _setup_db(tmp_path)
+    actor = app_module.create_actor_profile('APT-Obs', 'Observation filter/export scope')
+    monkeypatch.setattr(app_module, 'run_actor_generation', lambda actor_id: None)
+    monkeypatch.setattr(
+        app_module,
+        'get_ollama_status',
+        lambda: {'available': False, 'base_url': 'http://offline', 'model': 'none'},
+    )
+
+    with sqlite3.connect(app_module.DB_PATH) as connection:
+        connection.execute(
+            '''
+            INSERT INTO sources (
+                id, actor_id, source_name, url, published_at, retrieved_at, title, pasted_text
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                'src-ob-1',
+                actor['id'],
+                'Unit42',
+                'https://unit42.example/report',
+                '2026-02-20',
+                '2026-02-20T00:00:00+00:00',
+                'Unit 42 report',
+                'APT-Obs activity writeup.',
+            ),
+        )
+        connection.execute(
+            '''
+            INSERT INTO analyst_observations (
+                id, actor_id, item_type, item_key, note, source_ref, confidence,
+                source_reliability, information_credibility, updated_by, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                'obs-1',
+                actor['id'],
+                'source',
+                'src-ob-1',
+                'High-confidence pattern shift.',
+                'case-1',
+                'high',
+                'A',
+                '1',
+                'alice',
+                '2026-02-21T11:00:00+00:00',
+            ),
+        )
+        connection.execute(
+            '''
+            INSERT INTO analyst_observations (
+                id, actor_id, item_type, item_key, note, source_ref, confidence,
+                source_reliability, information_credibility, updated_by, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                'obs-2',
+                actor['id'],
+                'source',
+                'src-ob-2',
+                'Lower-confidence duplicate note.',
+                'case-2',
+                'low',
+                'C',
+                '3',
+                'bob',
+                '2026-02-22T11:00:00+00:00',
+            ),
+        )
+        connection.commit()
+
+    with TestClient(app_module.app) as client:
+        response = client.get(f"/actors/{actor['id']}/observations?analyst=ali&confidence=high")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload['actor_id'] == actor['id']
+        assert len(payload['items']) == 1
+        assert payload['items'][0]['updated_by'] == 'alice'
+        assert payload['items'][0]['source_title'] == 'Unit 42 report'
+
+        json_export = client.get(f"/actors/{actor['id']}/observations/export.json?confidence=high")
+        assert json_export.status_code == 200
+        json_payload = json_export.json()
+        assert json_payload['count'] == 1
+        assert json_payload['items'][0]['confidence'] == 'high'
+
+        csv_export = client.get(f"/actors/{actor['id']}/observations/export.csv?analyst=ali")
+        assert csv_export.status_code == 200
+        assert 'text/csv' in (csv_export.headers.get('content-type') or '')
+        assert 'High-confidence pattern shift.' in csv_export.text
+        assert 'Lower-confidence duplicate note.' not in csv_export.text
+
+
+def test_root_sidebar_shows_actor_last_updated_label(tmp_path, monkeypatch):
+    _setup_db(tmp_path)
+    actor = app_module.create_actor_profile('APT-Sidebar', 'Sidebar label scope')
+    monkeypatch.setattr(app_module, 'run_actor_generation', lambda actor_id: None)
+    monkeypatch.setattr(
+        app_module,
+        'get_ollama_status',
+        lambda: {'available': False, 'base_url': 'http://offline', 'model': 'none'},
+    )
+    with sqlite3.connect(app_module.DB_PATH) as connection:
+        connection.execute(
+            '''
+            UPDATE actor_profiles
+            SET notebook_updated_at = ?
+            WHERE id = ?
+            ''',
+            ('2026-02-19T14:00:00+00:00', actor['id']),
+        )
+        connection.commit()
+
+    with TestClient(app_module.app) as client:
+        response = client.get(f'/?actor_id={actor["id"]}')
+        assert response.status_code == 200
+        assert 'Updated 2026-02-19' in response.text
+
+
 def test_known_technique_ids_for_entity_collects_all_uses(monkeypatch):
     monkeypatch.setattr(
         app_module,
