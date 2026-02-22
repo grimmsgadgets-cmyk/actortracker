@@ -18,6 +18,10 @@
       blockquote { margin: 6px 0; padding: 8px 10px; background: #f3f5f7; border-left: 3px solid #9aa5b1; }
       .guidance { border: 1px solid #d6e3f5; border-radius: 8px; background: #f5faff; padding: 10px; margin-top: 8px; }
       .req-validation { margin-top: 6px; font-size: 11px; color: #334155; background: #f5f8ff; border: 1px solid #d9e3f7; border-radius: 6px; padding: 6px; }
+      .helper-box { border: 1px solid #d9e3f7; border-radius: 8px; background: #f5f8ff; padding: 8px; margin-top: 8px; }
+      .helper-box h3 { margin: 0 0 6px; font-size: 14px; }
+      .helper-box ul { margin: 6px 0 0; padding-left: 18px; }
+      .helper-box li { margin: 3px 0; font-size: 12px; line-height: 1.35; }
       pre { white-space: pre-wrap; margin: 0; }
       a { color: #2255aa; text-decoration: none; }
       a:hover { text-decoration: underline; }
@@ -31,29 +35,15 @@
       </div>
       <div class="card">
         <strong>Open questions:</strong> {{ notebook.counts.open_questions }}
-      </div>
-
-      {% if notebook.requirements %}
-      <div class="card">
-        <h2>Generated Requirements (Validation)</h2>
-        {% for req in notebook.requirements %}
-        <div class="q">
-          <div>
-            <span class="badge">{{ req.req_type }}</span>
-            <span class="badge {% if req.status == 'open' %}open{% else %}resolved{% endif %}">{{ req.status }}</span>
-            <strong>{{ req.requirement_text }}</strong>
-          </div>
-          <div class="req-validation">
-            <strong>Validation:</strong> {{ req.validation_score }}/10<br />
-            <strong>Checks:</strong> {{ req.validation_notes or 'passed' }}
-          </div>
-          {% if req.source_url %}
-          <div class="meta"><a href="{{ req.source_url }}" target="_blank" rel="noreferrer">{{ req.source_name or req.source_url }}</a></div>
-          {% endif %}
+        <div class="helper-box">
+          <h3>How to use this workspace</h3>
+          <ul>
+            <li>Start with open threads that have the newest updates.</li>
+            <li>Use “Where to look” and “What to look for” as your first hunt checklist.</li>
+            <li>Resolve a thread only after evidence confirms the question is answered.</li>
+          </ul>
         </div>
-        {% endfor %}
       </div>
-      {% endif %}
 
       <div class="card">
         <h2>Question Threads</h2>
@@ -99,6 +89,28 @@
         <p>No question threads yet.</p>
         {% endfor %}
       </div>
+
+      {% if notebook.requirements %}
+      <div class="card">
+        <h2>Generated Requirements (Validation)</h2>
+        {% for req in notebook.requirements %}
+        <div class="q">
+          <div>
+            <span class="badge">{{ req.req_type }}</span>
+            <span class="badge {% if req.status == 'open' %}open{% else %}resolved{% endif %}">{{ req.status }}</span>
+            <strong>{{ req.requirement_text }}</strong>
+          </div>
+          <div class="req-validation">
+            <strong>Validation:</strong> {{ req.validation_score }}/10<br />
+            <strong>Checks:</strong> {{ req.validation_notes or 'passed' }}
+          </div>
+          {% if req.source_url %}
+          <div class="meta"><a href="{{ req.source_url }}" target="_blank" rel="noreferrer">{{ req.source_name or req.source_url }}</a></div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
   </body>
 </html>

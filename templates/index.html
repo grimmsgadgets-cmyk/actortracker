@@ -8,7 +8,7 @@
     <meta http-equiv="refresh" content="4" />
     {% endif %}
     <style>
-      body { margin: 0; font-family: Arial, sans-serif; background: #f7f7f7; color: #111; }
+      body { margin: 0; font-family: Arial, sans-serif; background: #f7f7f7; color: #111; line-height: 1.4; }
       .layout { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
       .sidebar { background: #1e2430; color: #fff; padding: 16px; }
       .sidebar h1 { font-size: 20px; margin: 0 0 12px; }
@@ -40,14 +40,14 @@
         font-weight: 400;
         text-align: center;
       }
-      .main { padding: 14px; }
-      .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
-      .card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 12px; margin-bottom: 0; }
+      .main { padding: 16px; }
+      .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+      .card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px; margin-bottom: 0; }
       .card.span-2 { grid-column: 1 / -1; }
-      .section-title { margin-top: 0; margin-bottom: 8px; font-size: 17px; }
+      .section-title { margin-top: 0; margin-bottom: 10px; font-size: 18px; line-height: 1.25; }
       .section-body { padding-right: 2px; }
-      .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(100px, 1fr)); gap: 8px; }
-      .meta-box { background: #f1f4f8; border-radius: 8px; padding: 10px; }
+      .section-body p { margin: 0 0 10px; }
+      .section-body ul { margin-top: 6px; }
       .event { border-left: 3px solid #3f5f9a; margin: 6px 0; padding: 6px 8px; background: #f8fbff; }
       .timeline-graphic { position: relative; margin: 10px 0 0 6px; padding-left: 28px; }
       .timeline-graphic::before { content: ""; position: absolute; left: 9px; top: 0; bottom: 0; width: 3px; background: #c7d7ef; }
@@ -80,7 +80,7 @@
       .phase-block { margin-bottom: 8px; }
       .phase-title { font-size: 11px; text-transform: uppercase; letter-spacing: .02em; color: #475569; margin: 0 0 4px; }
       .dq-card { border: 1px solid #e3e9f5; border-radius: 8px; padding: 7px 8px; background: #fbfdff; margin-bottom: 6px; }
-      .dq-line { font-size: 12px; line-height: 1.25; color: #1f2937; margin: 2px 0; }
+      .dq-line { font-size: 12px; line-height: 1.35; color: #1f2937; margin: 4px 0; }
       .dq-line strong { font-weight: 600; }
       .dq-list { display: grid; gap: 6px; }
       .dq-row { border: 1px solid #e3e9f5; border-radius: 8px; background: #fbfdff; }
@@ -89,7 +89,18 @@
       .dq-detail { padding: 0 8px 8px; }
       .deemphasized { opacity: 0.75; }
       .summary-list { margin: 8px 0 0; padding-left: 18px; }
-      .summary-list li { margin: 4px 0; font-size: 13px; }
+      .summary-list li { margin: 6px 0; font-size: 13px; line-height: 1.35; }
+      .snapshot-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 8px; margin: 10px 0; }
+      .snapshot-card { border: 1px solid #dfe6f3; border-radius: 8px; padding: 8px; background: #fbfdff; }
+      .snapshot-title { font-size: 12px; text-transform: uppercase; letter-spacing: .02em; color: #475569; margin: 0 0 4px; }
+      .snapshot-text { font-size: 13px; line-height: 1.3; margin: 0 0 6px; }
+      .snapshot-meta { font-size: 11px; color: #475569; }
+      .helper-box { border: 1px solid #d9e3f7; border-radius: 8px; background: #f5f8ff; padding: 8px; margin: 8px 0; }
+      .helper-box h4 { margin: 0 0 6px; font-size: 13px; }
+      .helper-box p { margin: 0 0 6px; font-size: 12px; line-height: 1.35; color: #1f2937; }
+      .helper-box ul { margin: 6px 0 0; padding-left: 18px; }
+      .helper-box li { margin: 3px 0; font-size: 12px; line-height: 1.35; }
+      .inline-note { margin: 6px 0 0; font-size: 12px; color: #334155; }
       .kpi-strip { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; margin-bottom: 10px; }
       .kpi-card { background: #fff; border: 1px solid #dfe6f3; border-radius: 10px; padding: 8px 10px; }
       .kpi-label { font-size: 11px; color: #475569; text-transform: uppercase; letter-spacing: .02em; }
@@ -121,7 +132,7 @@
       blockquote { margin: 6px 0; padding: 8px 10px; background: #f3f5f7; border-left: 3px solid #9aa5b1; }
       .guidance { border: 1px solid #d6e3f5; border-radius: 8px; background: #f5faff; padding: 10px; margin: 8px 0; }
       .notice { background: #fff6d9; border: 1px solid #e1cc78; border-radius: 8px; padding: 6px 8px; margin-bottom: 8px; }
-      .top-status-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+      .top-status-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
       .status-chip { margin-bottom: 0; padding: 4px 8px; font-size: 11px; line-height: 1.25; width: fit-content; max-width: 340px; border-radius: 999px; }
       .status-chip strong { font-weight: 600; }
       .status-running { background: #eef6ff; border-color: #a7c2ea; }
@@ -141,7 +152,7 @@
       .track-row { display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; border-radius: 8px; padding: 8px; }
       .mini-form { display: inline; }
       .mini-form button { padding: 6px 10px; }
-      details.compact { border: 1px solid #e3e3e3; border-radius: 8px; padding: 6px 8px; margin-top: 8px; background: #fafafa; }
+      details.compact { border: 1px solid #e3e3e3; border-radius: 8px; padding: 8px 10px; margin-top: 8px; background: #fafafa; }
       details.compact > summary { cursor: pointer; font-weight: 600; }
       .sidebar-card { margin-top: 14px; padding-top: 12px; border-top: 1px solid #3d4658; }
       .sidebar-card h3 { margin: 0 0 8px; }
@@ -169,8 +180,8 @@
       .req-item p { margin: 6px 0; font-size: 13px; line-height: 1.35; }
       .req-item form { margin-top: 6px; }
       .req-validation { margin-top: 6px; font-size: 11px; color: #334155; background: #f5f8ff; border: 1px solid #d9e3f7; border-radius: 6px; padding: 6px; }
-      @media (max-width: 1180px) { .dashboard { grid-template-columns: 1fr; } .card.span-2 { grid-column: auto; } .timeline-ataglance { grid-template-columns: 1fr; } .kpi-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); } }
-      @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .meta-grid { grid-template-columns: repeat(2, minmax(100px, 1fr)); } .status-chip { max-width: 100%; width: 100%; } }
+      @media (max-width: 1180px) { .dashboard { grid-template-columns: 1fr; } .card.span-2 { grid-column: auto; } .timeline-ataglance { grid-template-columns: 1fr; } .kpi-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); } .snapshot-grid { grid-template-columns: 1fr; } }
+      @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .status-chip { max-width: 100%; width: 100%; } }
     </style>
   </head>
   <body>
@@ -203,21 +214,21 @@
 
         {% if notebook %}
         <div class="sidebar-card">
-          <h3>Requirements Builder</h3>
-          <small>Generate PIR/GIR/IR items using actor evidence, org context, and local LLM support.</small>
-          <form method="post" action="/actors/{{ notebook.actor.id }}/requirements/generate">
-            <label for="priority_mode">Priority Mode</label>
-            <select id="priority_mode" name="priority_mode">
-              <option value="Strategic" {% if notebook.requirements_context.priority_mode == 'Strategic' %}selected{% endif %}>Strategic (PIR)</option>
-              <option value="Operational" {% if notebook.requirements_context.priority_mode == 'Operational' %}selected{% endif %}>Operational (GIR)</option>
-              <option value="Tactical" {% if notebook.requirements_context.priority_mode == 'Tactical' %}selected{% endif %}>Tactical (IR)</option>
-            </select>
-            <label for="org_context">Org Context</label>
-            <textarea id="org_context" name="org_context" rows="4" placeholder="Critical assets, business unit, environment, constraints...">{{ notebook.requirements_context.org_context }}</textarea>
-            <button class="action-button" type="submit">Generate PIR/GIR/IR</button>
-          </form>
+          <h3>Data Operations</h3>
+          <small>Use these controls to update evidence and generate requirements without interrupting triage.</small>
           <details class="compact secondary-action">
-            <summary class="action-button">Import sources</summary>
+            <summary class="action-button">Open data operations</summary>
+            <form method="post" action="/actors/{{ notebook.actor.id }}/requirements/generate">
+              <label for="priority_mode">Priority Mode</label>
+              <select id="priority_mode" name="priority_mode">
+                <option value="Strategic" {% if notebook.requirements_context.priority_mode == 'Strategic' %}selected{% endif %}>Strategic (PIR)</option>
+                <option value="Operational" {% if notebook.requirements_context.priority_mode == 'Operational' %}selected{% endif %}>Operational (GIR)</option>
+                <option value="Tactical" {% if notebook.requirements_context.priority_mode == 'Tactical' %}selected{% endif %}>Tactical (IR)</option>
+              </select>
+              <label for="org_context">Org Context</label>
+              <textarea id="org_context" name="org_context" rows="4" placeholder="Critical assets, business unit, environment, constraints...">{{ notebook.requirements_context.org_context }}</textarea>
+              <button class="action-button" type="submit">Generate PIR/GIR/IR</button>
+            </form>
             <form method="post" action="/actors/{{ notebook.actor.id }}/sources">
               <input type="url" name="source_url" placeholder="https://..." required />
               <button type="submit">Fetch and add source</button>
@@ -228,9 +239,6 @@
             <form method="post" action="/actors/{{ notebook.actor.id }}/refresh">
               <button type="submit">Refresh notebook</button>
             </form>
-          </details>
-          <details class="compact secondary-action">
-            <summary class="action-button">Add IOCs</summary>
             <form method="post" action="/actors/{{ notebook.actor.id }}/iocs">
               <select name="ioc_type">
                 <option value="ip">IP</option>
@@ -289,6 +297,26 @@
         <div class="empty">Select an actor to open the notebook.</div>
         {% else %}
         <div class="dashboard">
+        <section class="card span-2">
+          <h2 class="section-title">Start Here (for new analysts)</h2>
+          <div class="helper-box">
+            <h4>How to use this page in order</h4>
+            <ul>
+              <li><strong>Step 1 - Who are they?</strong> Learn the actor profile and common techniques.</li>
+              <li><strong>Step 2 - What changed recently?</strong> Review the snapshot cards to understand impact fast.</li>
+              <li><strong>Step 3 - What do I do now?</strong> Follow the top action cards and escalate only when threshold is met.</li>
+            </ul>
+          </div>
+          <details class="compact">
+            <summary>Quick definitions (optional)</summary>
+            <div class="helper-box">
+              <p><strong>Technique ID:</strong> A MITRE ATT&CK behavior label (example: <code>T1486</code>) used to map activity patterns.</p>
+              <p><strong>Confidence:</strong> How strong the evidence is based on source count and recency.</p>
+              <p><strong>Escalation threshold:</strong> The minimum evidence that should trigger incident response actions.</p>
+            </div>
+          </details>
+        </section>
+
         <section class="card">
           <h2 class="section-title">1) Who are they?</h2>
           <div class="section-body">
@@ -314,6 +342,7 @@
             </li>
             {% endfor %}
           </ul>
+          <p><small>New to ATT&CK IDs? Treat these as behavior tags to guide detections and hunts.</small></p>
           {% else %}
           <p><small>No mapped technique profile available yet.</small></p>
           {% endif %}
@@ -323,8 +352,20 @@
             <li><strong>Last checked:</strong> {{ notebook.kpis.last_verified_update }}</li>
           </ul>
           <p><strong>Emerging techniques observed</strong></p>
-          {% if notebook.emerging_technique_ids %}
-          <p>{{ notebook.emerging_technique_ids | join(', ') }}</p>
+          {% if notebook.emerging_techniques %}
+          <ul class="summary-list">
+            {% for technique in notebook.emerging_techniques[:3] %}
+            <li>
+              {% if technique.technique_url %}
+              <a href="{{ technique.technique_url }}" target="_blank" rel="noreferrer">{{ technique.technique_id }}</a>
+              {% else %}
+              {{ technique.technique_id }}
+              {% endif %}
+              {% if technique.technique_name %} - {{ technique.technique_name }}{% endif %}
+              <small>(first seen {{ technique.first_seen or 'unknown' }}, {{ technique.source_count }} sources, {{ technique.event_count }} events)</small>
+            </li>
+            {% endfor %}
+          </ul>
           {% else %}
           <p><small>No new technique IDs observed yet in actor-specific recent reporting.</small></p>
           {% endif %}
@@ -335,12 +376,6 @@
             <button type="submit">Track actor</button>
           </form>
           {% endif %}
-          <div class="meta-grid">
-            <div class="meta-box deemphasized"><strong>Sources</strong><br />{{ notebook.counts.sources }}</div>
-            <div class="meta-box"><strong>Timeline events</strong><br />{{ notebook.counts.timeline_events }}</div>
-            <div class="meta-box"><strong>Open questions</strong><br />{{ notebook.counts.open_questions }}</div>
-            <div class="meta-box"><strong>Actor ID</strong><br />{{ notebook.actor.id }}</div>
-          </div>
         </section>
 
         <section class="card">
@@ -356,7 +391,32 @@
             <li><strong>Target sectors:</strong> {{ recent_change.targets }}</li>
             <li><strong>Reported impact:</strong> {{ recent_change.damage }}</li>
           </ul>
+          {% if notebook.recent_activity_synthesis %}
+          <p class="inline-note"><strong>How to read:</strong> left to right = change, affected area, and recommended first action.</p>
+          <div class="snapshot-grid">
+            {% for synthesis in notebook.recent_activity_synthesis %}
+            <div class="snapshot-card">
+              <h3 class="snapshot-title">{{ synthesis.label }}</h3>
+              <p class="snapshot-text">{{ synthesis.text }}</p>
+              <div class="snapshot-meta">
+                <span class="badge">{{ synthesis.confidence }}</span>
+                <span>{{ synthesis.lineage }}</span>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
           {% if notebook.recent_activity_highlights %}
+          {% set corroborating = notebook.recent_activity_highlights[0] %}
+          <div class="event">
+            <strong>Best corroborating evidence right now:</strong>
+            {% if corroborating.source_url %}
+            <a href="{{ corroborating.source_url }}" target="_blank" rel="noreferrer">{{ corroborating.evidence_title or 'Source article' }}</a>
+            {% else %}
+            <span>{{ corroborating.evidence_title or 'Source article' }}</span>
+            {% endif %}
+            <small>{{ corroborating.date }} | {{ corroborating.evidence_source_label or corroborating.source_name or 'Unknown source' }}</small>
+          </div>
           <p><strong>Latest 3 sources:</strong></p>
           {% set latest_diverse = namespace(items=[], seen_domains=[]) %}
           {% for item in notebook.recent_activity_highlights %}
@@ -431,35 +491,49 @@
           {% endif %}
         </section>
 
-        {% if notebook.priority_phase_groups %}
+        {% if notebook.priority_questions %}
         <section class="card span-2 decision-queue">
           <div class="decision-header">
-            <h2 class="section-title" style="margin:0;">3) What should I check first?</h2>
+            <h2 class="section-title" style="margin:0;">3) What do I do about it?</h2>
             <a href="/actors/{{ notebook.actor.id }}/questions">Open workspace</a>
           </div>
           <p class="deemphasized" style="margin:0 0 8px;">
-            Based on what this group has been doing recently, here are the first things to look for.
+            Start with these analyst actions and escalate when the trigger conditions are met.
           </p>
-          {% set environment_checks = notebook.get('environment_checks', []) %}
-          {% if not environment_checks %}
-          {% set environment_checks = [{
-            'primary_area': 'Firewall/VPN',
-            'short_cue': 'Start with unusual remote access and login patterns',
-            'where_to_look': 'Firewall/VPN logs, identity sign-in logs',
-            'what_to_look_for': 'Repeated failed logins followed by success; sign-ins from new geographies or devices.',
-            'why_this_matters': 'This gives a reliable first pass when recent actor reporting is limited or ambiguous.',
-            'based_on': 'Based on: limited recent reporting.'
-          }] %}
-          {% endif %}
+          <details class="compact">
+            <summary>How to use these action cards (optional)</summary>
+            <div class="helper-box">
+              <ul>
+                <li>Work top-to-bottom on the first 1-3 cards.</li>
+                <li>If you cannot confirm the decision trigger, keep monitoring and gather more evidence.</li>
+                <li>If escalation threshold is met, document evidence and hand off to incident response.</li>
+              </ul>
+            </div>
+          </details>
           <div class="dq-list">
-            {% for check in environment_checks[:3] %}
-            <details class="dq-row">
-              <summary><strong>{{ check.primary_area }}</strong> — {{ check.short_cue }}</summary>
+            {% for question in notebook.priority_questions[:3] %}
+            <details class="dq-row" open>
+              <summary>
+                <strong>{{ question.quick_check_title }}</strong>
+                <span class="pbadge {{ question.priority.lower() }}">{{ question.priority }}</span>
+              </summary>
               <div class="dq-detail">
-                <div class="dq-line"><strong>Where to look:</strong> {{ check.where_to_look }}</div>
-                <div class="dq-line"><strong>What to look for:</strong> {{ check.what_to_look_for }}</div>
-                <div class="dq-line"><strong>Why this matters:</strong> {{ check.why_this_matters }}</div>
-                <div class="dq-line"><strong>Based on:</strong> {{ check.based_on.replace('Based on: ', '') }}</div>
+                <div class="dq-line"><strong>Decision trigger:</strong> {{ question.decision_trigger }}</div>
+                <div class="dq-line"><strong>Immediate action:</strong> {{ question.first_step or question.telemetry_anchor }}</div>
+                {% if question.query_hint %}
+                <div class="dq-line"><strong>Query hint:</strong> {{ question.query_hint }}</div>
+                {% endif %}
+                {% if question.what_to_look_for %}
+                <div class="dq-line"><strong>What to look for first:</strong> {{ question.what_to_look_for }}</div>
+                {% endif %}
+                <div class="dq-line"><strong>Escalation threshold:</strong> {{ question.escalation_threshold }}</div>
+                {% if question.success_condition %}
+                <div class="dq-line"><strong>If not found:</strong> {{ question.success_condition }}</div>
+                {% endif %}
+                <div class="dq-line"><strong>Confidence:</strong> {{ question.confidence }} | {{ question.evidence_recency }} | corroboration: {{ question.corroborating_sources }} source(s) | org fit: {{ question.org_alignment }}</div>
+                {% if question.updated_at %}
+                <div class="dq-line"><strong>Last signal update:</strong> {{ question.updated_at }}</div>
+                {% endif %}
               </div>
             </details>
             {% endfor %}
@@ -479,8 +553,8 @@
             <div class="deviation-strip">
               <h4>Recent Deviations ({{ notebook.timeline_window_label }})</h4>
               <div class="chip-line">
-                {% for dev in notebook.emerging_techniques_with_dates %}
-                <span class="chip alert">{{ dev.technique_id }}{% if dev.first_seen %} ({{ dev.first_seen }}){% endif %}</span>
+                {% for dev in notebook.emerging_techniques %}
+                <span class="chip alert">{{ dev.technique_id }}{% if dev.last_seen %} ({{ dev.last_seen }}){% endif %} - {{ dev.source_count }} src</span>
                 {% else %}
                 <span class="chip">No deviations yet</span>
                 {% endfor %}

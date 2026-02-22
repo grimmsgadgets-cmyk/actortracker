@@ -38,6 +38,9 @@ ATTACK_ENTERPRISE_STIX_URL = (
 )
 MITRE_GROUP_CACHE: list[dict[str, object]] | None = None
 MITRE_DATASET_CACHE: dict[str, object] | None = None
+MITRE_TECHNIQUE_PHASE_CACHE: dict[str, list[str]] | None = None
+MITRE_CAMPAIGN_LINK_CACHE: dict[str, dict[str, set[str]]] | None = None
+MITRE_TECHNIQUE_INDEX_CACHE: dict[str, dict[str, str]] | None = None
 ACTOR_FEED_LOOKBACK_DAYS = int(os.environ.get('ACTOR_FEED_LOOKBACK_DAYS', '540'))
 
 CAPABILITY_GRID_KEYS = [
@@ -63,12 +66,21 @@ BEHAVIORAL_MODEL_KEYS = [
     'adaptation_pattern',
     'operational_tempo',
 ]
-TTP_CATEGORY_MAP = {
-    'T1059': 'execution',
-    'T1547': 'persistence',
-    'T1566': 'initial_access',
-    'T1021': 'lateral_movement',
-    'T1071': 'command_and_control',
+ATTACK_TACTIC_TO_CAPABILITY_MAP = {
+    'reconnaissance': 'targeting',
+    'resource_development': 'infrastructure',
+    'initial_access': 'initial_access',
+    'execution': 'execution',
+    'persistence': 'persistence',
+    'privilege_escalation': 'privilege_escalation',
+    'defense_evasion': 'defense_evasion',
+    'credential_access': 'privilege_escalation',
+    'discovery': 'lateral_movement',
+    'lateral_movement': 'lateral_movement',
+    'collection': 'exfiltration',
+    'command_and_control': 'command_and_control',
+    'exfiltration': 'exfiltration',
+    'impact': 'impact',
 }
 DEFAULT_CTI_FEEDS = [
     ('CISA Alerts', 'https://www.cisa.gov/cybersecurity-advisories/all.xml'),
@@ -455,6 +467,42 @@ def _normalize_actor_key(value: str) -> str:
     return ' '.join(re.findall(r'[a-z0-9]+', value.lower()))
 
 
+def _dedupe_actor_terms(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        if not text:
+            continue
+        key = _normalize_actor_key(text)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(text)
+    return deduped
+
+
+def _mitre_alias_values(obj: dict[str, object]) -> list[str]:
+    alias_candidates: list[str] = []
+    for field in ('aliases', 'x_mitre_aliases'):
+        raw = obj.get(field)
+        if isinstance(raw, list):
+            alias_candidates.extend(str(item).strip() for item in raw if str(item).strip())
+    return _dedupe_actor_terms(alias_candidates)
+
+
+def _candidate_overlap_score(actor_tokens: set[str], search_keys: set[str]) -> float:
+    best_score = 0.0
+    for search_key in search_keys:
+        key_tokens = set(search_key.split())
+        if not key_tokens:
+            continue
+        overlap = len(actor_tokens.intersection(key_tokens)) / len(actor_tokens.union(key_tokens))
+        if overlap > best_score:
+            best_score = overlap
+    return best_score
+
+
 def _mitre_dataset_path() -> Path:
     configured = os.environ.get('MITRE_ATTACK_PATH', '').strip()
     if configured:
@@ -496,6 +544,7 @@ def _load_mitre_groups() -> list[dict[str, object]]:
         MITRE_GROUP_CACHE = []
         return MITRE_GROUP_CACHE
 
+    campaign_group_keys = _mitre_campaign_link_index().get('groups', {})
     groups: list[dict[str, object]] = []
     for obj in parsed.get('objects', []):
         if not isinstance(obj, dict):
@@ -507,7 +556,7 @@ def _load_mitre_groups() -> list[dict[str, object]]:
 
         name = str(obj.get('name') or '').strip()
         description = str(obj.get('description') or '').strip()
-        aliases = [str(alias).strip() for alias in obj.get('aliases', []) if str(alias).strip()]
+        aliases = _mitre_alias_values(obj)
         ext_refs = obj.get('external_references', [])
         attack_id: str | None = None
         attack_url: str | None = None
@@ -523,18 +572,26 @@ def _load_mitre_groups() -> list[dict[str, object]]:
                     attack_url = ref_url or f'https://attack.mitre.org/groups/{external_id}/'
                     break
 
-        search_keys = {_normalize_actor_key(name)}
+        base_search_keys = {_normalize_actor_key(name)}
         for alias in aliases:
-            search_keys.add(_normalize_actor_key(alias))
+            base_search_keys.add(_normalize_actor_key(alias))
+        if attack_id:
+            base_search_keys.add(_normalize_actor_key(attack_id))
+
+        stix_id = str(obj.get('id') or '')
+        campaign_search_keys = set(campaign_group_keys.get(stix_id, set()))
+        search_keys = set(base_search_keys).union(campaign_search_keys)
 
         groups.append(
             {
-                'stix_id': str(obj.get('id') or ''),
+                'stix_id': stix_id,
                 'name': name,
                 'description': description,
                 'aliases': aliases,
                 'attack_id': attack_id,
                 'attack_url': attack_url,
+                'base_search_keys': base_search_keys,
+                'campaign_search_keys': campaign_search_keys,
                 'search_keys': search_keys,
             }
         )
@@ -564,14 +621,237 @@ def _load_mitre_dataset() -> dict[str, object]:
     return MITRE_DATASET_CACHE
 
 
+def _stix_type(stix_id: str) -> str:
+    if '--' not in stix_id:
+        return ''
+    return stix_id.split('--', 1)[0].strip().lower()
+
+
+def _mitre_campaign_link_index() -> dict[str, dict[str, set[str]]]:
+    global MITRE_CAMPAIGN_LINK_CACHE
+    if MITRE_CAMPAIGN_LINK_CACHE is not None:
+        return MITRE_CAMPAIGN_LINK_CACHE
+
+    dataset = _load_mitre_dataset()
+    objects = dataset.get('objects', []) if isinstance(dataset, dict) else []
+    if not isinstance(objects, list):
+        MITRE_CAMPAIGN_LINK_CACHE = {'groups': {}, 'software': {}}
+        return MITRE_CAMPAIGN_LINK_CACHE
+
+    campaign_keys: dict[str, set[str]] = {}
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+        if obj.get('type') != 'campaign':
+            continue
+        if bool(obj.get('revoked')) or bool(obj.get('x_mitre_deprecated')):
+            continue
+        campaign_id = str(obj.get('id') or '').strip()
+        if not campaign_id:
+            continue
+        name = str(obj.get('name') or '').strip()
+        aliases = _mitre_alias_values(obj)
+        keys = {_normalize_actor_key(name)} if name else set()
+        for alias in aliases:
+            keys.add(_normalize_actor_key(alias))
+        campaign_keys[campaign_id] = {key for key in keys if key}
+
+    group_links: dict[str, set[str]] = {}
+    software_links: dict[str, set[str]] = {}
+
+    def _link_campaign(target_id: str, campaign_id: str) -> None:
+        target_type = _stix_type(target_id)
+        keyset = campaign_keys.get(campaign_id, set())
+        if not keyset:
+            return
+        if target_type == 'intrusion-set':
+            group_links.setdefault(target_id, set()).update(keyset)
+            return
+        if target_type in {'malware', 'tool'}:
+            software_links.setdefault(target_id, set()).update(keyset)
+
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+        if obj.get('type') != 'relationship':
+            continue
+        if bool(obj.get('revoked')) or bool(obj.get('x_mitre_deprecated')):
+            continue
+
+        rel_type = str(obj.get('relationship_type') or '').strip().lower()
+        source_ref = str(obj.get('source_ref') or '').strip()
+        target_ref = str(obj.get('target_ref') or '').strip()
+        if not source_ref or not target_ref:
+            continue
+
+        source_type = _stix_type(source_ref)
+        target_type = _stix_type(target_ref)
+
+        if rel_type == 'attributed-to':
+            if source_type == 'campaign':
+                _link_campaign(target_ref, source_ref)
+            elif target_type == 'campaign':
+                _link_campaign(source_ref, target_ref)
+            continue
+
+        if rel_type in {'uses', 'related-to'}:
+            if source_type == 'campaign':
+                _link_campaign(target_ref, source_ref)
+            elif target_type == 'campaign':
+                _link_campaign(source_ref, target_ref)
+
+    MITRE_CAMPAIGN_LINK_CACHE = {'groups': group_links, 'software': software_links}
+    return MITRE_CAMPAIGN_LINK_CACHE
+
+
+def _normalize_tactic_name(value: str) -> str:
+    return value.strip().lower().replace('-', '_').replace(' ', '_')
+
+
+def _normalize_technique_id(value: str) -> str:
+    return value.strip().upper()
+
+
+def _mitre_technique_index() -> dict[str, dict[str, str]]:
+    global MITRE_TECHNIQUE_INDEX_CACHE
+    if MITRE_TECHNIQUE_INDEX_CACHE is not None:
+        return MITRE_TECHNIQUE_INDEX_CACHE
+
+    dataset = _load_mitre_dataset()
+    objects = dataset.get('objects', []) if isinstance(dataset, dict) else []
+    if not isinstance(objects, list):
+        MITRE_TECHNIQUE_INDEX_CACHE = {}
+        return MITRE_TECHNIQUE_INDEX_CACHE
+
+    index: dict[str, dict[str, str]] = {}
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+        if obj.get('type') != 'attack-pattern':
+            continue
+        if bool(obj.get('revoked')) or bool(obj.get('x_mitre_deprecated')):
+            continue
+
+        name = str(obj.get('name') or '').strip()
+        refs = obj.get('external_references', [])
+        if not isinstance(refs, list):
+            continue
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            if str(ref.get('source_name') or '') != 'mitre-attack':
+                continue
+            technique_id = _normalize_technique_id(str(ref.get('external_id') or ''))
+            if not technique_id.startswith('T'):
+                continue
+            technique_url = str(ref.get('url') or '').strip()
+            if not technique_url:
+                technique_url = f'https://attack.mitre.org/techniques/{technique_id.replace(".", "/")}/'
+            index[technique_id] = {
+                'technique_id': technique_id,
+                'name': name,
+                'url': technique_url,
+            }
+            break
+
+    MITRE_TECHNIQUE_INDEX_CACHE = index
+    return MITRE_TECHNIQUE_INDEX_CACHE
+
+
+def _mitre_valid_technique_ids() -> set[str]:
+    return set(_mitre_technique_index().keys())
+
+
+def _mitre_technique_phase_index() -> dict[str, list[str]]:
+    global MITRE_TECHNIQUE_PHASE_CACHE
+    if MITRE_TECHNIQUE_PHASE_CACHE is not None:
+        return MITRE_TECHNIQUE_PHASE_CACHE
+
+    dataset = _load_mitre_dataset()
+    objects = dataset.get('objects', []) if isinstance(dataset, dict) else []
+    if not isinstance(objects, list):
+        MITRE_TECHNIQUE_PHASE_CACHE = {}
+        return MITRE_TECHNIQUE_PHASE_CACHE
+
+    phase_index: dict[str, list[str]] = {}
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+        if obj.get('type') != 'attack-pattern':
+            continue
+        if bool(obj.get('revoked')) or bool(obj.get('x_mitre_deprecated')):
+            continue
+
+        technique_id = ''
+        refs = obj.get('external_references', [])
+        if isinstance(refs, list):
+            for ref in refs:
+                if not isinstance(ref, dict):
+                    continue
+                if str(ref.get('source_name') or '') != 'mitre-attack':
+                    continue
+                external_id = _normalize_technique_id(str(ref.get('external_id') or ''))
+                if external_id.startswith('T'):
+                    technique_id = external_id
+                    break
+        if not technique_id:
+            continue
+
+        phases_raw = obj.get('kill_chain_phases', [])
+        if not isinstance(phases_raw, list):
+            continue
+        normalized_phases: list[str] = []
+        for phase_item in phases_raw:
+            if not isinstance(phase_item, dict):
+                continue
+            phase_name = _normalize_tactic_name(str(phase_item.get('phase_name') or ''))
+            if not phase_name:
+                continue
+            if phase_name not in normalized_phases:
+                normalized_phases.append(phase_name)
+        if not normalized_phases:
+            continue
+        phase_index[technique_id] = normalized_phases
+
+    MITRE_TECHNIQUE_PHASE_CACHE = phase_index
+    return MITRE_TECHNIQUE_PHASE_CACHE
+
+
+def _capability_category_from_technique_id(ttp_id: str) -> str | None:
+    normalized_ttp = _normalize_technique_id(ttp_id)
+    if not normalized_ttp:
+        return None
+
+    technique_candidates = [normalized_ttp]
+    if '.' in normalized_ttp:
+        technique_candidates.append(normalized_ttp.split('.', 1)[0])
+
+    phase_index = _mitre_technique_phase_index()
+    for technique_id in technique_candidates:
+        phases = phase_index.get(technique_id, [])
+        for phase in phases:
+            mapped = ATTACK_TACTIC_TO_CAPABILITY_MAP.get(phase)
+            if mapped in CAPABILITY_GRID_KEYS:
+                return mapped
+    return None
+
+
 def _match_mitre_group(actor_name: str) -> dict[str, object] | None:
     actor_key = _normalize_actor_key(actor_name)
     if not actor_key:
         return None
 
     groups = _load_mitre_groups()
+
+    # Prefer direct group aliases/IDs before campaign-derived synonyms.
     for group in groups:
-        if actor_key in group['search_keys']:
+        base_search_keys = group.get('base_search_keys')
+        if isinstance(base_search_keys, set) and actor_key in base_search_keys:
+            return group
+
+    for group in groups:
+        campaign_search_keys = group.get('campaign_search_keys')
+        if isinstance(campaign_search_keys, set) and actor_key in campaign_search_keys:
             return group
 
     actor_tokens = set(actor_key.split())
@@ -581,10 +861,10 @@ def _match_mitre_group(actor_name: str) -> dict[str, object] | None:
     best: dict[str, object] | None = None
     best_score = 0.0
     for group in groups:
-        group_tokens = set(_normalize_actor_key(str(group['name'])).split())
-        if not group_tokens:
+        search_keys = group.get('search_keys')
+        if not isinstance(search_keys, set):
             continue
-        overlap = len(actor_tokens.intersection(group_tokens)) / len(actor_tokens.union(group_tokens))
+        overlap = _candidate_overlap_score(actor_tokens, search_keys)
         if overlap > best_score:
             best_score = overlap
             best = group
@@ -611,6 +891,7 @@ def _load_mitre_software() -> list[dict[str, object]]:
         MITRE_SOFTWARE_CACHE = []
         return MITRE_SOFTWARE_CACHE
 
+    campaign_software_keys = _mitre_campaign_link_index().get('software', {})
     software: list[dict[str, object]] = []
     for obj in parsed.get("objects", []):
         if not isinstance(obj, dict):
@@ -629,11 +910,7 @@ def _load_mitre_software() -> list[dict[str, object]]:
 
         description = str(obj.get("description") or "").strip()
 
-        # aliases for software are commonly in x_mitre_aliases
-        aliases: list[str] = []
-        x_aliases = obj.get("x_mitre_aliases", [])
-        if isinstance(x_aliases, list):
-            aliases = [str(a).strip() for a in x_aliases if str(a).strip()]
+        aliases = _mitre_alias_values(obj)
 
         attack_id: str | None = None
         attack_url: str | None = None
@@ -652,19 +929,27 @@ def _load_mitre_software() -> list[dict[str, object]]:
                         attack_url = f"https://attack.mitre.org/software/{external_id}/"
                     break
 
-        search_keys = {_normalize_actor_key(name)}
+        base_search_keys = {_normalize_actor_key(name)}
         for alias in aliases:
-            search_keys.add(_normalize_actor_key(alias))
+            base_search_keys.add(_normalize_actor_key(alias))
+        if attack_id:
+            base_search_keys.add(_normalize_actor_key(attack_id))
+
+        stix_id = str(obj.get("id") or "")
+        campaign_search_keys = set(campaign_software_keys.get(stix_id, set()))
+        search_keys = set(base_search_keys).union(campaign_search_keys)
 
         software.append(
             {
-                "stix_id": str(obj.get("id") or ""),
+                "stix_id": stix_id,
                 "type": obj_type,  # malware/tool
                 "name": name,
                 "description": description,
                 "aliases": aliases,
                 "attack_id": attack_id,
                 "attack_url": attack_url,
+                "base_search_keys": base_search_keys,
+                "campaign_search_keys": campaign_search_keys,
                 "search_keys": search_keys,
             }
         )
@@ -680,9 +965,15 @@ def _match_mitre_software(name: str) -> dict[str, object] | None:
 
     items = _load_mitre_software()
 
-    # exact match first
+    # Prefer direct software aliases/IDs before campaign-derived synonyms.
     for it in items:
-        if actor_key in it["search_keys"]:
+        base_search_keys = it.get("base_search_keys")
+        if isinstance(base_search_keys, set) and actor_key in base_search_keys:
+            return it
+
+    for it in items:
+        campaign_search_keys = it.get("campaign_search_keys")
+        if isinstance(campaign_search_keys, set) and actor_key in campaign_search_keys:
             return it
 
     # fuzzy fallback
@@ -693,11 +984,10 @@ def _match_mitre_software(name: str) -> dict[str, object] | None:
     best = None
     best_score = 0.0
     for it in items:
-        nkey = _normalize_actor_key(str(it.get("name") or ""))
-        it_tokens = set(nkey.split())
-        if not it_tokens:
+        search_keys = it.get('search_keys')
+        if not isinstance(search_keys, set):
             continue
-        overlap = len(actor_tokens & it_tokens) / len(actor_tokens | it_tokens)
+        overlap = _candidate_overlap_score(actor_tokens, search_keys)
         if overlap > best_score:
             best_score = overlap
             best = it
@@ -839,6 +1129,58 @@ def _group_top_techniques(group_stix_id: str, limit: int = 6) -> list[dict[str, 
     return results
 
 
+def _known_technique_ids_for_entity(entity_stix_id: str) -> set[str]:
+    if not entity_stix_id:
+        return set()
+
+    dataset = _load_mitre_dataset()
+    objects = dataset.get('objects', []) if isinstance(dataset, dict) else []
+    if not isinstance(objects, list):
+        return set()
+
+    attack_pattern_to_tid: dict[str, str] = {}
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+        if obj.get('type') != 'attack-pattern':
+            continue
+        if bool(obj.get('revoked')) or bool(obj.get('x_mitre_deprecated')):
+            continue
+        attack_pattern_id = str(obj.get('id') or '')
+        if not attack_pattern_id:
+            continue
+
+        refs = obj.get('external_references', [])
+        if not isinstance(refs, list):
+            continue
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            if str(ref.get('source_name') or '') != 'mitre-attack':
+                continue
+            external_id = _normalize_technique_id(str(ref.get('external_id') or ''))
+            if external_id.startswith('T'):
+                attack_pattern_to_tid[attack_pattern_id] = external_id
+                break
+
+    known: set[str] = set()
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+        if obj.get('type') != 'relationship':
+            continue
+        if obj.get('relationship_type') != 'uses':
+            continue
+        if str(obj.get('source_ref') or '') != entity_stix_id:
+            continue
+
+        target_ref = str(obj.get('target_ref') or '')
+        tid = attack_pattern_to_tid.get(target_ref)
+        if tid:
+            known.add(tid)
+    return known
+
+
 def _favorite_attack_vectors(techniques: list[dict[str, str]], limit: int = 3) -> list[str]:
     phase_counts: dict[str, int] = {}
     for item in techniques:
@@ -850,29 +1192,122 @@ def _favorite_attack_vectors(techniques: list[dict[str, str]], limit: int = 3) -
     return [phase.replace('_', ' ') for phase, _ in ranked[:limit]]
 
 
+def _emerging_techniques_from_timeline(
+    timeline_items: list[dict[str, object]],
+    known_technique_ids: set[str],
+    limit: int = 5,
+    min_distinct_sources: int = 2,
+    min_event_count: int = 2,
+) -> list[dict[str, object]]:
+    stats: dict[str, dict[str, object]] = {}
+    technique_index = _mitre_technique_index()
+    valid_ids = set(technique_index.keys())
+    for item in timeline_items:
+        occurred_raw = str(item.get('occurred_at') or '')
+        occurred_dt = _parse_published_datetime(occurred_raw)
+        if occurred_dt is None:
+            continue
+
+        source_id = str(item.get('source_id') or '').strip()
+        for technique_id in item.get('ttp_ids', []):
+            tid = _normalize_technique_id(str(technique_id))
+            if valid_ids and tid not in valid_ids:
+                continue
+            if not tid or tid in known_technique_ids:
+                continue
+            entry = stats.setdefault(
+                tid,
+                {
+                    'first_seen': occurred_dt,
+                    'latest_seen': occurred_dt,
+                    'event_count': 0,
+                    'source_ids': set(),
+                    'categories': set(),
+                },
+            )
+            entry['event_count'] = int(entry.get('event_count') or 0) + 1
+            first_seen = entry.get('first_seen')
+            if isinstance(first_seen, datetime):
+                if occurred_dt < first_seen:
+                    entry['first_seen'] = occurred_dt
+            else:
+                entry['first_seen'] = occurred_dt
+            latest_seen = entry.get('latest_seen')
+            if isinstance(latest_seen, datetime):
+                if occurred_dt > latest_seen:
+                    entry['latest_seen'] = occurred_dt
+            else:
+                entry['latest_seen'] = occurred_dt
+            source_ids = entry.get('source_ids')
+            if isinstance(source_ids, set) and source_id:
+                source_ids.add(source_id)
+            category = str(item.get('category') or '').strip().replace('_', ' ')
+            categories = entry.get('categories')
+            if isinstance(categories, set) and category:
+                categories.add(category)
+
+    ranked: list[tuple[str, datetime, int, int, dict[str, object]]] = []
+    for tid, entry in stats.items():
+        latest_seen = entry.get('latest_seen')
+        if not isinstance(latest_seen, datetime):
+            continue
+        event_count = int(entry.get('event_count') or 0)
+        source_ids = entry.get('source_ids')
+        source_count = len(source_ids) if isinstance(source_ids, set) else 0
+        if source_count < min_distinct_sources and event_count < min_event_count:
+            continue
+        ranked.append((tid, latest_seen, source_count, event_count, entry))
+
+    ranked.sort(key=lambda item: (item[1], item[2], item[3], item[0]), reverse=True)
+    emerging: list[dict[str, object]] = []
+    for tid, _latest, source_count, event_count, entry in ranked[:limit]:
+        first_seen = entry.get('first_seen')
+        latest_seen = entry.get('latest_seen')
+        categories = entry.get('categories')
+        technique = technique_index.get(tid, {})
+        emerging.append(
+            {
+                'technique_id': tid,
+                'technique_name': str(technique.get('name') or ''),
+                'technique_url': str(technique.get('url') or ''),
+                'first_seen': first_seen.date().isoformat() if isinstance(first_seen, datetime) else '',
+                'last_seen': latest_seen.date().isoformat() if isinstance(latest_seen, datetime) else '',
+                'source_count': source_count,
+                'event_count': event_count,
+                'categories': sorted(str(item) for item in categories) if isinstance(categories, set) else [],
+            }
+        )
+    return emerging
+
+
 def _emerging_technique_ids_from_timeline(
     timeline_items: list[dict[str, object]],
     known_technique_ids: set[str],
     limit: int = 5,
+    min_distinct_sources: int = 2,
+    min_event_count: int = 2,
 ) -> list[str]:
-    observed: list[str] = []
-    for item in sorted(timeline_items, key=lambda entry: str(entry.get('occurred_at') or ''), reverse=True):
-        for technique_id in item.get('ttp_ids', []):
-            tid = str(technique_id).upper()
-            if tid in known_technique_ids:
-                continue
-            if tid not in observed:
-                observed.append(tid)
-            if len(observed) >= limit:
-                return observed
-    return observed
+    return [
+        str(item.get('technique_id') or '')
+        for item in _emerging_techniques_from_timeline(
+            timeline_items,
+            known_technique_ids,
+            limit=limit,
+            min_distinct_sources=min_distinct_sources,
+            min_event_count=min_event_count,
+        )
+        if str(item.get('technique_id') or '')
+    ]
 
 
 def _extract_ttp_ids(text: str) -> list[str]:
     matches = re.findall(r'\bT\d{4}(?:\.\d{3})?\b', text, flags=re.IGNORECASE)
+    valid_ids = _mitre_valid_technique_ids()
     deduped: list[str] = []
     for value in matches:
         norm = value.upper()
+        if valid_ids and norm not in valid_ids:
+            continue
         if norm not in deduped:
             deduped.append(norm)
     return deduped
@@ -902,10 +1337,10 @@ def _parse_iso_for_sort(value: str) -> datetime:
 
 
 def _short_date(value: str) -> str:
-    dt = _parse_iso_for_sort(value)
-    if dt == datetime.min.replace(tzinfo=timezone.utc):
+    dt = _parse_published_datetime(value)
+    if dt is None:
         return value[:10]
-    return dt.strftime('%Y-%m-%d')
+    return dt.date().isoformat()
 
 
 def _format_date_or_unknown(value: str) -> str:
@@ -945,6 +1380,7 @@ def _build_notebook_kpis(
 ) -> dict[str, str]:
     now = datetime.now(timezone.utc)
     cutoff_30 = now - timedelta(days=30)
+    valid_technique_ids = _mitre_valid_technique_ids()
 
     activity_30d = 0
     novel_techniques_30d: set[str] = set()
@@ -955,6 +1391,8 @@ def _build_notebook_kpis(
         activity_30d += 1
         for ttp in item.get('ttp_ids', []):
             tid = str(ttp).upper()
+            if valid_technique_ids and tid not in valid_technique_ids:
+                continue
             if tid and tid not in known_technique_ids:
                 novel_techniques_30d.add(tid)
 
@@ -1021,7 +1459,13 @@ def _first_seen_for_techniques(
 ) -> list[dict[str, str]]:
     first_seen: dict[str, str] = {}
     wanted = {tech.upper() for tech in technique_ids}
-    for item in sorted(timeline_items, key=lambda entry: _parse_iso_for_sort(str(entry.get('occurred_at') or ''))):
+    for item in sorted(
+        timeline_items,
+        key=lambda entry: (
+            _parse_published_datetime(str(entry.get('occurred_at') or ''))
+            or datetime.min.replace(tzinfo=timezone.utc)
+        ),
+    ):
         occurred = str(item.get('occurred_at') or '')
         for tech in item.get('ttp_ids', []):
             tech_id = str(tech).upper()
@@ -1480,6 +1924,117 @@ def _telemetry_anchor_line(guidance_items: list[dict[str, object]], question_tex
     return ', '.join(platforms[:2]) if platforms else 'Windows Event Logs'
 
 
+def _guidance_line(guidance_items: list[dict[str, object]], key: str) -> str:
+    for item in guidance_items:
+        value = str(item.get(key) or '').strip()
+        if not value:
+            continue
+        first = value.splitlines()[0].strip().lstrip('-').strip()
+        if first:
+            return first
+    return ''
+
+
+def _guidance_query_hint(guidance_items: list[dict[str, object]], question_text: str) -> str:
+    for item in guidance_items:
+        value = str(item.get('query_hint') or '').strip()
+        if value:
+            return value
+    fallback = _guidance_for_platform(_platforms_for_question(question_text)[0], question_text)
+    return str(fallback.get('query_hint') or '')
+
+
+def _priority_update_evidence_dt(update: dict[str, object]) -> datetime | None:
+    published = _parse_published_datetime(str(update.get('source_published_at') or ''))
+    if published is not None:
+        return published
+    return _parse_published_datetime(str(update.get('created_at') or ''))
+
+
+def _priority_update_recency_label(evidence_dt: datetime | None) -> str:
+    if evidence_dt is None:
+        return 'Evidence recency unknown'
+    days_old = max(0, (datetime.now(timezone.utc) - evidence_dt).days)
+    if days_old <= 1:
+        return 'Evidence age: <= 24h'
+    if days_old <= 7:
+        return f'Evidence age: {days_old}d'
+    if days_old <= 30:
+        return f'Evidence age: {days_old}d (stale)'
+    return f'Evidence age: {days_old}d (very stale)'
+
+
+def _priority_recency_points(evidence_dt: datetime | None) -> int:
+    if evidence_dt is None:
+        return 0
+    days_old = max(0, (datetime.now(timezone.utc) - evidence_dt).days)
+    if days_old <= 1:
+        return 3
+    if days_old <= 7:
+        return 2
+    if days_old <= 30:
+        return 1
+    return 0
+
+
+def _priority_rank_score(
+    thread: dict[str, object],
+    relevance: int,
+    evidence_dt: datetime | None,
+    corroborating_sources: int,
+    org_alignment: int,
+) -> int:
+    score = _question_priority_score(thread) + max(0, relevance)
+    score += _priority_recency_points(evidence_dt)
+    if corroborating_sources >= 3:
+        score += 2
+    elif corroborating_sources >= 2:
+        score += 1
+    score += max(0, min(org_alignment, 3))
+    return score
+
+
+def _org_context_tokens(org_context: str) -> set[str]:
+    stopwords = {
+        'about', 'after', 'again', 'against', 'among', 'assets', 'because', 'before', 'being',
+        'below', 'between', 'business', 'could', 'environment', 'having', 'other', 'should',
+        'their', 'there', 'these', 'those', 'through', 'under', 'until', 'which', 'while',
+        'within', 'without',
+    }
+    return {
+        token
+        for token in re.findall(r'[a-z0-9]{4,}', org_context.lower())
+        if token not in stopwords
+    }
+
+
+def _question_org_alignment(question_text: str, org_context: str) -> int:
+    if not org_context.strip():
+        return 0
+    q_tokens = _token_set(question_text)
+    c_tokens = _org_context_tokens(org_context)
+    if not q_tokens or not c_tokens:
+        return 0
+    overlap = len(q_tokens.intersection(c_tokens))
+    if overlap >= 3:
+        return 3
+    if overlap == 2:
+        return 2
+    if overlap == 1:
+        return 1
+    return 0
+
+
+def _org_alignment_label(score: int) -> str:
+    if score >= 3:
+        return 'High'
+    if score >= 2:
+        return 'Medium'
+    if score >= 1:
+        return 'Low'
+    return 'Unknown'
+
+
 def _escalation_threshold_line(question_text: str) -> str:
     lowered = question_text.lower()
     if any(token in lowered for token in ('cve', 'vpn', 'edge', 'exploit', 'initial access')):
@@ -1871,12 +2426,15 @@ def _actor_search_queries(actor_terms: list[str]) -> list[str]:
 
 def _domain_allowed_for_actor_search(url: str) -> bool:
     try:
-        netloc = urlparse(url).netloc.lower()
+        hostname = (urlparse(url).hostname or '').strip('.').lower()
     except Exception:
         return False
-    if not netloc:
+    if not hostname:
         return False
-    return any(domain in netloc for domain in ACTOR_SEARCH_DOMAINS)
+    return any(
+        hostname == domain or hostname.endswith(f'.{domain}')
+        for domain in ACTOR_SEARCH_DOMAINS
+    )
 
 
 def _duckduckgo_actor_search_urls(actor_terms: list[str], limit: int = 20) -> list[str]:
@@ -3351,7 +3909,7 @@ def import_default_feeds_for_actor(actor_id: str) -> int:
 
         for feed_name, feed_url in feed_list:
             try:
-                feed_resp = httpx.get(feed_url, timeout=20.0, follow_redirects=True)
+                feed_resp = _safe_http_get(feed_url, timeout=20.0)
                 feed_resp.raise_for_status()
                 entries = _parse_feed_entries(feed_resp.text)
             except Exception:
@@ -4042,48 +4600,103 @@ def _fetch_actor_notebook(actor_id: str) -> dict[str, object]:
             for item in timeline_recent_items
         ]
     ).lower()
-    sorted_open_threads = sorted(
-        open_threads,
-        key=lambda thread: (
-            _question_priority_score(thread),
-            _parse_iso_for_sort(str(thread.get('updated_at') or '')),
+    org_context_text = str(context_row[0]) if context_row and context_row[0] else ''
+    scored_threads: list[dict[str, object]] = []
+    for thread in open_threads:
+        question_text = str(thread.get('question_text') or '')
+        relevance = _question_actor_relevance(question_text, actor_categories, signal_text)
+        if relevance <= 0:
+            continue
+        updates = thread.get('updates', [])
+        updates_list = updates if isinstance(updates, list) else []
+        evidence_dts = [
+            dt
+            for dt in (
+                _priority_update_evidence_dt(update)
+                for update in updates_list
+                if isinstance(update, dict)
+            )
+            if dt is not None
+        ]
+        latest_evidence_dt = max(evidence_dts) if evidence_dts else None
+        corroborating_sources = len(
+            {
+                str(update.get('source_url') or update.get('source_name') or '').strip().lower()
+                for update in updates_list
+                if isinstance(update, dict)
+                and str(update.get('source_url') or update.get('source_name') or '').strip()
+            }
+        )
+        org_alignment = _question_org_alignment(question_text, org_context_text)
+        rank_score = _priority_rank_score(
+            thread,
+            relevance,
+            latest_evidence_dt,
+            corroborating_sources,
+            org_alignment,
+        )
+        scored_threads.append(
+            {
+                'thread': thread,
+                'relevance': relevance,
+                'rank_score': rank_score,
+                'latest_evidence_dt': latest_evidence_dt,
+                'corroborating_sources': corroborating_sources,
+                'org_alignment': org_alignment,
+            }
+        )
+
+    sorted_scored_threads = sorted(
+        scored_threads,
+        key=lambda item: (
+            int(item['rank_score']),
+            item['latest_evidence_dt'] or datetime.min.replace(tzinfo=timezone.utc),
         ),
         reverse=True,
     )
-    for thread in sorted_open_threads:
-        question_text = str(thread['question_text'])
-        relevance = _question_actor_relevance(question_text, actor_categories, signal_text)
-        if relevance <= 1:
-            continue
+    for scored in sorted_scored_threads:
+        thread = scored['thread']
+        question_text = str(thread.get('question_text') or '')
+        relevance = int(scored['relevance'])
+        rank_score = int(scored['rank_score'])
         updates = thread.get('updates', [])
-        latest_update = updates[0] if isinstance(updates, list) and updates else None
-        score = _question_priority_score(thread) + relevance
-        latest_excerpt = (
-            str(latest_update.get('trigger_excerpt') or '')
-            if isinstance(latest_update, dict)
-            else ''
-        )
+        updates_list = updates if isinstance(updates, list) else []
+        latest_update = updates_list[0] if updates_list and isinstance(updates_list[0], dict) else None
+        latest_excerpt = str(latest_update.get('trigger_excerpt') or '') if isinstance(latest_update, dict) else ''
         latest_excerpt = ' '.join(latest_excerpt.split())
         if len(latest_excerpt) > 180:
             latest_excerpt = latest_excerpt[:180].rsplit(' ', 1)[0] + '...'
-        if score >= 8:
+        if rank_score >= 10:
             priority = 'High'
-        elif score >= 6:
+        elif rank_score >= 7:
             priority = 'Medium'
         else:
             priority = 'Low'
         guidance_items = guidance_by_thread.get(str(thread['id']), [])
-        updates_count = len(updates) if isinstance(updates, list) else 0
+        updates_count = len(updates_list)
         phase_label = _phase_label_for_question(question_text)
+        where_to_check = _priority_where_to_check(guidance_items, question_text)
+        confidence = _priority_confidence_label(updates_count, relevance, latest_excerpt)
         priority_questions.append(
             {
                 'id': thread['id'],
+                'question_text': question_text,
                 'phase_label': phase_label,
                 'quick_check_title': _quick_check_title(question_text, phase_label),
                 'decision_trigger': _short_decision_trigger(question_text),
                 'telemetry_anchor': _telemetry_anchor_line(guidance_items, question_text),
+                'first_step': _priority_next_best_action(question_text, where_to_check),
+                'what_to_look_for': _guidance_line(guidance_items, 'what_to_look_for'),
+                'query_hint': _guidance_query_hint(guidance_items, question_text),
+                'success_condition': _priority_disconfirming_signal(question_text),
                 'escalation_threshold': _escalation_threshold_line(question_text),
                 'priority': priority,
+                'confidence': confidence,
+                'evidence_recency': _priority_update_recency_label(
+                    scored['latest_evidence_dt'] if isinstance(scored['latest_evidence_dt'], datetime) else None
+                ),
+                'corroborating_sources': int(scored['corroborating_sources']),
+                'org_alignment': _org_alignment_label(int(scored.get('org_alignment') or 0)),
                 'updates_count': updates_count,
                 'updated_at': thread['updated_at'],
             }
@@ -4094,15 +4707,16 @@ def _fetch_actor_notebook(actor_id: str) -> dict[str, object]:
     if len(priority_questions) < 3:
         fallback_items = _fallback_priority_questions(str(actor['display_name']), actor_categories)
         for idx, item in enumerate(fallback_items, start=1):
+            fallback_question_text = str(item['question_text'])
             if any(
-                _token_overlap(str(existing.get('decision_trigger') or ''), str(item.get('question_text') or '')) >= 0.7
+                _token_overlap(str(existing.get('question_text') or ''), fallback_question_text) >= 0.7
                 for existing in priority_questions
             ):
                 continue
-            fallback_question_text = str(item['question_text'])
             priority_questions.append(
                 {
                     'id': f'fallback-{idx}',
+                    'question_text': fallback_question_text,
                     'phase_label': _phase_label_for_question(fallback_question_text),
                     'quick_check_title': _quick_check_title(
                         fallback_question_text,
@@ -4110,8 +4724,16 @@ def _fetch_actor_notebook(actor_id: str) -> dict[str, object]:
                     ),
                     'decision_trigger': _short_decision_trigger(fallback_question_text),
                     'telemetry_anchor': f'Anchor: {str(item["where_to_check"])}.',
+                    'first_step': _priority_next_best_action(fallback_question_text, str(item['where_to_check'])),
+                    'what_to_look_for': str(item.get('hunt_focus') or ''),
+                    'query_hint': f'Start in: {str(item["where_to_check"])}.',
+                    'success_condition': str(item.get('disconfirming_signal') or ''),
                     'escalation_threshold': _escalation_threshold_line(fallback_question_text),
                     'priority': str(item['priority']),
+                    'confidence': str(item.get('confidence') or 'Low'),
+                    'evidence_recency': 'Evidence recency unknown',
+                    'corroborating_sources': 0,
+                    'org_alignment': 'Unknown',
                     'updates_count': 0,
                     'updated_at': '',
                 }
@@ -4150,9 +4772,22 @@ def _fetch_actor_notebook(actor_id: str) -> dict[str, object]:
     actor_profile_summary = str(mitre_profile['summary'])
     top_techniques = _group_top_techniques(str(mitre_profile.get('stix_id') or ''))
     favorite_vectors = _favorite_attack_vectors(top_techniques)
-    known_technique_ids = {str(item.get('technique_id') or '').upper() for item in top_techniques if item.get('technique_id')}
-    emerging_technique_ids = _emerging_technique_ids_from_timeline(timeline_recent_items, known_technique_ids)
-    emerging_techniques_with_dates = _first_seen_for_techniques(timeline_recent_items, emerging_technique_ids)
+    known_technique_ids = _known_technique_ids_for_entity(str(mitre_profile.get('stix_id') or ''))
+    if not known_technique_ids:
+        known_technique_ids = {
+            str(item.get('technique_id') or '').upper()
+            for item in top_techniques
+            if item.get('technique_id')
+        }
+    emerging_techniques = _emerging_techniques_from_timeline(timeline_recent_items, known_technique_ids)
+    emerging_technique_ids = [str(item.get('technique_id') or '') for item in emerging_techniques]
+    emerging_techniques_with_dates = [
+        {
+            'technique_id': str(item.get('technique_id') or ''),
+            'first_seen': str(item.get('first_seen') or ''),
+        }
+        for item in emerging_techniques
+    ]
     timeline_graph = _build_timeline_graph(timeline_recent_items)
     timeline_compact_rows = _compact_timeline_rows(timeline_items, known_technique_ids)
     actor_terms = _actor_terms(
@@ -4190,6 +4825,7 @@ def _fetch_actor_notebook(actor_id: str) -> dict[str, object]:
         'actor_created_date': _format_date_or_unknown(str(actor.get('created_at') or '')),
         'favorite_vectors': favorite_vectors,
         'top_techniques': top_techniques,
+        'emerging_techniques': emerging_techniques,
         'emerging_technique_ids': emerging_technique_ids,
         'emerging_techniques_with_dates': emerging_techniques_with_dates,
         'timeline_graph': timeline_graph,
@@ -4244,9 +4880,15 @@ def initialize_sqlite() -> None:
     global DB_PATH
     DB_PATH = _resolve_startup_db_path()
     _ensure_mitre_attack_dataset()
-    global MITRE_GROUP_CACHE, MITRE_DATASET_CACHE
+    global MITRE_GROUP_CACHE, MITRE_DATASET_CACHE, MITRE_TECHNIQUE_PHASE_CACHE
+    global MITRE_SOFTWARE_CACHE, MITRE_CAMPAIGN_LINK_CACHE
+    global MITRE_TECHNIQUE_INDEX_CACHE
     MITRE_GROUP_CACHE = None
     MITRE_DATASET_CACHE = None
+    MITRE_TECHNIQUE_PHASE_CACHE = None
+    MITRE_SOFTWARE_CACHE = None
+    MITRE_CAMPAIGN_LINK_CACHE = None
+    MITRE_TECHNIQUE_INDEX_CACHE = None
     with sqlite3.connect(DB_PATH) as connection:
         connection.execute(
             '''
@@ -4693,7 +5335,7 @@ async def add_source(actor_id: str, request: Request) -> RedirectResponse:
     if not source_url:
         raise HTTPException(status_code=400, detail='source_url is required')
 
-    if not pasted_text or not source_name:
+    if not pasted_text:
         derived = derive_source_from_url(source_url)
         source_name = str(derived['source_name'])
         source_url = str(derived['source_url'])
@@ -4706,6 +5348,9 @@ async def add_source(actor_id: str, request: Request) -> RedirectResponse:
         source_html_title = str(derived.get('html_title') or '') or None
         source_publisher = str(derived.get('publisher') or '') or None
         source_site_name = str(derived.get('site_name') or '') or None
+    elif not source_name:
+        parsed = urlparse(source_url)
+        source_name = (parsed.hostname or parsed.netloc or 'Manual source').strip()
 
     with sqlite3.connect(DB_PATH) as connection:
         _upsert_source_for_actor(
@@ -5013,7 +5658,7 @@ async def create_observation(actor_id: str, request: Request) -> dict[str, objec
     source_ref = str(source_ref_raw) if source_ref_raw is not None else None
     source_date = str(source_date_raw) if source_date_raw is not None else None
 
-    ttp_list = normalize_string_list(payload.get('ttp_list'))
+    ttp_list = [_normalize_technique_id(item) for item in normalize_string_list(payload.get('ttp_list'))]
     tools_list = normalize_string_list(payload.get('tools_list'))
     infra_list = normalize_string_list(payload.get('infra_list'))
     target_list = normalize_string_list(payload.get('target_list'))
@@ -5066,7 +5711,7 @@ async def create_observation(actor_id: str, request: Request) -> dict[str, objec
         if state_row is not None:
             capability_grid = json.loads(state_row[0])
             for ttp in observation['ttp_list']:
-                category = TTP_CATEGORY_MAP.get(ttp)
+                category = _capability_category_from_technique_id(ttp)
                 if category is None:
                     continue
                 category_entry = capability_grid.get(category)

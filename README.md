@@ -28,6 +28,9 @@ Before starting, ensure you have:
 -   A computer running Windows, macOS, or Linux
 -   **Docker Desktop** installed and running\
     https://www.docker.com/products/docker-desktop
+-   Internet access on first run so Docker can pull base images
+
+No external gateway or Codex-specific network setup is required.
 
 To verify Docker is installed:
 
@@ -61,7 +64,7 @@ This will:
 
 -   Build the Docker image
 -   Install dependencies inside the container
--   Start the web application
+-   Start the web application and local Ollama service
 
 The first run may take a few minutes.
 
