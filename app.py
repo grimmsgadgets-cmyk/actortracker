@@ -23,6 +23,7 @@ import feed_import_service
 import legacy_ui
 import mitre_store
 import priority_questions
+import priority_service
 import routes_api
 import routes_actor_ops
 import routes_dashboard
@@ -1105,42 +1106,57 @@ _quick_check_title = priority_questions.quick_check_title
 
 
 def _priority_where_to_check(guidance_items: list[dict[str, object]], question_text: str) -> str:
-    return priority_questions.priority_where_to_check(
+    return priority_service.priority_where_to_check_core(
         guidance_items,
         question_text,
-        platforms_for_question=lambda text: _platforms_for_question(text),
+        deps={
+            'priority_where_to_check': priority_questions.priority_where_to_check,
+            'platforms_for_question': _platforms_for_question,
+        },
     )
 
 
 def _telemetry_anchor_line(guidance_items: list[dict[str, object]], question_text: str) -> str:
-    return priority_questions.telemetry_anchor_line(
+    return priority_service.telemetry_anchor_line_core(
         guidance_items,
         question_text,
-        platforms_for_question=lambda text: _platforms_for_question(text),
+        deps={
+            'telemetry_anchor_line': priority_questions.telemetry_anchor_line,
+            'platforms_for_question': _platforms_for_question,
+        },
     )
 
 
 def _guidance_query_hint(guidance_items: list[dict[str, object]], question_text: str) -> str:
-    return priority_questions.guidance_query_hint(
+    return priority_service.guidance_query_hint_core(
         guidance_items,
         question_text,
-        platforms_for_question=lambda text: _platforms_for_question(text),
-        guidance_for_platform=lambda platform, text: _guidance_for_platform(platform, text),
+        deps={
+            'guidance_query_hint': priority_questions.guidance_query_hint,
+            'platforms_for_question': _platforms_for_question,
+            'guidance_for_platform': _guidance_for_platform,
+        },
     )
 
 
 def _priority_update_evidence_dt(update: dict[str, object]) -> datetime | None:
-    return priority_questions.priority_update_evidence_dt(
+    return priority_service.priority_update_evidence_dt_core(
         update,
-        parse_published_datetime=lambda value: _parse_published_datetime(value),
+        deps={
+            'priority_update_evidence_dt': priority_questions.priority_update_evidence_dt,
+            'parse_published_datetime': _parse_published_datetime,
+        },
     )
 
 
 def _question_org_alignment(question_text: str, org_context: str) -> int:
-    return priority_questions.question_org_alignment(
+    return priority_service.question_org_alignment_core(
         question_text,
         org_context,
-        token_set=lambda text: _token_set(text),
+        deps={
+            'question_org_alignment': priority_questions.question_org_alignment,
+            'token_set': _token_set,
+        },
     )
 
 
