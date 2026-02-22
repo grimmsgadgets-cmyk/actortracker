@@ -24,6 +24,7 @@ from actor_ingest import source_fingerprint as build_source_fingerprint
 from actor_ingest import upsert_source_for_actor
 from network_safety import safe_http_get, validate_outbound_url
 from notebook_pipeline import build_environment_checks as pipeline_build_environment_checks
+from notebook_pipeline import build_recent_activity_highlights as pipeline_build_recent_activity_highlights
 from notebook_pipeline import latest_reporting_recency_label as pipeline_latest_reporting_recency_label
 from notebook_pipeline import recent_change_summary as pipeline_recent_change_summary
 
@@ -2341,214 +2342,32 @@ def _build_recent_activity_highlights(
         except Exception:
             return ''
 
-    def _is_trusted_domain(url: str) -> bool:
-        domain = _source_domain(url)
-        return bool(domain and any(d in domain for d in TRUSTED_ACTIVITY_DOMAINS))
-
-    def _actor_specific_text(text: str, terms: list[str]) -> bool:
-        return bool(text and terms and _sentence_mentions_actor_terms(text, terms))
-
-    def _candidate_signal_key(
-        summary: str,
-        category: str,
-        target_text: str,
-        ttp_values: list[str],
-    ) -> str:
-        normalized_summary = _normalize_text(summary)
-        key_summary = ' '.join(normalized_summary.split()[:14])
-        key_target = _normalize_text(target_text)
-        key_ttps = ','.join(sorted(str(value).upper() for value in ttp_values[:4]))
-        return f'{_normalize_text(category)}|{key_target}|{key_ttps}|{key_summary}'
-
-    def _recency_points(value: str | None) -> int:
-        dt = _parse_published_datetime(value)
-        if dt is None:
-            return 0
-        days_old = max(0, (datetime.now(timezone.utc) - dt).days)
-        if days_old <= 1:
-            return 4
-        if days_old <= 7:
-            return 3
-        if days_old <= 30:
-            return 2
-        return 1
-
-    source_by_id = {str(source['id']): source for source in sources}
-    highlights: list[dict[str, str | None]] = []
-    terms = [term.lower() for term in actor_terms if term]
-    if not terms:
-        return highlights
-
-    candidates: list[dict[str, object]] = []
-    for item in timeline_items:
-        source = source_by_id.get(str(item['source_id']))
-        summary = str(item.get('summary') or '')
-        source_text = str(source.get('pasted_text') if source else '')
-        source_url = str(source.get('url') if source else '')
-        if not _looks_like_activity_sentence(summary):
-            continue
-        if not (_actor_specific_text(summary, terms) or _actor_specific_text(source_text, terms)):
-            continue
-        # Strict gating: require trusted domains unless summary is explicitly actor-tagged.
-        if source_url and not _is_trusted_domain(source_url) and not _actor_specific_text(summary, terms):
-            continue
-
-        ttp_list = [str(t) for t in item.get('ttp_ids', [])]
-        signal_key = _candidate_signal_key(
-            summary,
-            str(item.get('category') or ''),
-            str(item.get('target_text') or ''),
-            ttp_list,
-        )
-        candidates.append(
-            {
-                'item': item,
-                'source': source,
-                'source_url': source_url,
-                'summary': summary,
-                'signal_key': signal_key,
-                'date_value': str(source.get('published_at') if source else '') or str(item.get('occurred_at') or ''),
-            }
-        )
-
-    signal_domains: dict[str, set[str]] = {}
-    for candidate in candidates:
-        signal_key = str(candidate.get('signal_key') or '')
-        source_obj = candidate.get('source')
-        source_domain = (
-            _canonical_group_domain(source_obj)
-            if isinstance(source_obj, dict)
-            else _source_domain(str(candidate.get('source_url') or ''))
-        )
-        if not signal_key or not source_domain:
-            continue
-        signal_domains.setdefault(signal_key, set()).add(source_domain)
-
-    ranked_candidates: list[dict[str, object]] = []
-    for candidate in candidates:
-        signal_key = str(candidate.get('signal_key') or '')
-        source_url = str(candidate.get('source_url') or '')
-        corroboration_sources = len(signal_domains.get(signal_key, set()))
-        score = _recency_points(str(candidate.get('date_value') or ''))
-        if _is_trusted_domain(source_url):
-            score += 2
-        if corroboration_sources >= 3:
-            score += 3
-        elif corroboration_sources == 2:
-            score += 2
-        elif corroboration_sources == 1:
-            score += 1
-
-        date_dt = _parse_published_datetime(str(candidate.get('date_value') or ''))
-        ranked = dict(candidate)
-        ranked['score'] = score
-        ranked['corroboration_sources'] = corroboration_sources
-        ranked['date_dt'] = date_dt or datetime.min.replace(tzinfo=timezone.utc)
-        ranked_candidates.append(ranked)
-
-    ranked_candidates.sort(
-        key=lambda entry: (
-            int(entry.get('score') or 0),
-            int(entry.get('corroboration_sources') or 0),
-            entry.get('date_dt') or datetime.min.replace(tzinfo=timezone.utc),
-        ),
-        reverse=True,
+    pipeline_items = pipeline_build_recent_activity_highlights(
+        timeline_items,
+        sources,
+        actor_terms,
+        trusted_activity_domains=TRUSTED_ACTIVITY_DOMAINS,
+        source_domain=_source_domain,
+        canonical_group_domain=_canonical_group_domain,
+        looks_like_activity_sentence=_looks_like_activity_sentence,
+        sentence_mentions_actor_terms=_sentence_mentions_actor_terms,
+        text_contains_actor_term=_text_contains_actor_term,
+        normalize_text=_normalize_text,
+        parse_published_datetime=lambda value: _parse_published_datetime(value),
+        freshness_badge=lambda value: _freshness_badge(value),
+        evidence_title_from_source=_evidence_title_from_source,
+        fallback_title_from_url=_fallback_title_from_url,
+        evidence_source_label_from_source=_evidence_source_label_from_source,
+        extract_ttp_ids=_extract_ttp_ids,
+        split_sentences=lambda text: _split_sentences(text),
+        looks_like_navigation_noise=_looks_like_navigation_noise,
     )
 
-    for candidate in ranked_candidates:
-        item = candidate.get('item')
-        source = candidate.get('source')
-        if not isinstance(item, dict):
-            continue
-        freshness_value = str(source['published_at']) if source and source.get('published_at') else str(item.get('occurred_at') or '')
-        freshness_label, freshness_class = _freshness_badge(freshness_value)
-        source_url = str(candidate.get('source_url') or '')
-        ttp_values = [str(t) for t in item.get('ttp_ids', [])]
-        highlights.append(
-            {
-                'date': _format_date_or_unknown(str(item['occurred_at'])),
-                'text': str(candidate.get('summary') or ''),
-                'category': str(item['category']).replace('_', ' '),
-                'target_text': str(item.get('target_text') or ''),
-                'ttp_ids': ', '.join(ttp_values),
-                'source_name': str(source['source_name']) if source else None,
-                'source_url': source_url if source else None,
-                'evidence_title': _evidence_title_from_source(source) if source else _fallback_title_from_url(source_url),
-                'evidence_source_label': _evidence_source_label_from_source(source) if source else (_source_domain(source_url) or 'Unknown source'),
-                'evidence_group_domain': _canonical_group_domain(source) if source else (_source_domain(source_url) or 'unknown-source'),
-                'source_published_at': str(source['published_at']) if source and source.get('published_at') else None,
-                'corroboration_sources': str(candidate.get('corroboration_sources') or '0'),
-                'freshness_label': freshness_label,
-                'freshness_class': freshness_class,
-            }
-        )
-        if len(highlights) >= 8:
-            break
-
-    if highlights:
-        return highlights
-
-    # Fallback: synthesize activity statements from actor-relevant source text.
-    def _activity_synthesis_sentence(text: str, terms: list[str]) -> str | None:
-        for sentence in _split_sentences(text):
-            normalized = ' '.join(sentence.split())
-            if len(normalized) < 35:
-                continue
-            if _looks_like_navigation_noise(normalized):
-                continue
-            if not _sentence_mentions_actor_terms(normalized, terms):
-                continue
-            if not _looks_like_activity_sentence(normalized):
-                continue
-            return normalized
-        for sentence in _split_sentences(text):
-            normalized = ' '.join(sentence.split())
-            if len(normalized) < 35:
-                continue
-            if _looks_like_navigation_noise(normalized):
-                continue
-            if not _sentence_mentions_actor_terms(normalized, terms):
-                continue
-            return normalized
-        return None
-
-    for source in sorted(
-        sources,
-        key=lambda item: str(item.get('published_at') or item.get('retrieved_at') or ''),
-        reverse=True,
-    ):
-        text = str(source.get('pasted_text') or '').strip()
-        if not text:
-            continue
-        combined = f'{source.get("source_name") or ""} {source.get("url") or ""} {text}'
-        if actor_terms and not _text_contains_actor_term(combined, actor_terms):
-            continue
-        if not _is_trusted_domain(str(source.get('url') or '')):
-            continue
-        synthesized = _activity_synthesis_sentence(text, actor_terms)
-        if not synthesized:
-            continue
-        freshness_label, freshness_class = _freshness_badge(str(source.get('published_at') or source.get('retrieved_at') or ''))
-        highlights.append(
-            {
-                'date': _format_date_or_unknown(str(source.get('published_at') or source.get('retrieved_at') or '')),
-                'text': synthesized,
-                'category': 'activity synthesis',
-                'target_text': '',
-                'ttp_ids': ', '.join(_extract_ttp_ids(synthesized)[:4]),
-                'source_name': str(source['source_name']) if source else None,
-                'source_url': str(source['url']) if source else None,
-                'evidence_title': _evidence_title_from_source(source) if source else _fallback_title_from_url(str(source.get('url') or '')),
-                'evidence_source_label': _evidence_source_label_from_source(source) if source else (_source_domain(str(source.get('url') or '')) or 'Unknown source'),
-                'evidence_group_domain': _canonical_group_domain(source) if source else (_source_domain(str(source.get('url') or '')) or 'unknown-source'),
-                'source_published_at': str(source['published_at']) if source and source.get('published_at') else None,
-                'corroboration_sources': '1',
-                'freshness_label': freshness_label,
-                'freshness_class': freshness_class,
-            }
-        )
-        if len(highlights) >= 6:
-            break
+    highlights: list[dict[str, str | None]] = []
+    for item in pipeline_items:
+        copy_item = dict(item)
+        copy_item['date'] = _format_date_or_unknown(str(item.get('date') or ''))
+        highlights.append(copy_item)
     return highlights
 
 
