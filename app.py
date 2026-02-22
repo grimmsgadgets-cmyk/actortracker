@@ -30,6 +30,7 @@ import routes_notebook
 import routes_ui
 import network_service
 import source_ingest_service
+import source_derivation_service
 import source_store_service
 import status_service
 import timeline_extraction
@@ -1596,11 +1597,12 @@ def _safe_http_get(
 
 
 def derive_source_from_url(source_url: str, fallback_source_name: str | None = None, published_hint: str | None = None) -> dict[str, str | None]:
-    return pipeline_derive_source_from_url_core(
+    return source_derivation_service.derive_source_from_url_core(
         source_url,
         fallback_source_name=fallback_source_name,
         published_hint=published_hint,
         deps={
+            'pipeline_derive_source_from_url_core': pipeline_derive_source_from_url_core,
             'safe_http_get': _safe_http_get,
             'extract_question_sentences': _extract_question_sentences,
             'first_sentences': _first_sentences,
