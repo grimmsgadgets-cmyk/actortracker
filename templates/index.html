@@ -57,10 +57,17 @@
         font-weight: 400;
         text-align: center;
       }
-      .main { padding: 16px; }
-      .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+      .main { padding: 16px; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
+      .dashboard { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; flex: 1; min-height: 0; }
+      .workspace-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(0, 1fr); gap: 12px; min-height: 0; }
+      .workspace-grid .pane { min-height: 0; overflow: auto; }
       .card { background: #fff; border: 1px solid #d9e2ef; border-radius: 10px; padding: 14px; margin-bottom: 0; box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03); }
       .card.span-2 { grid-column: 1 / -1; }
+      .ataglance-strip { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; padding: 10px 12px; }
+      .ataglance-metric { border: 1px solid #dce7f8; border-radius: 8px; background: #f8fbff; padding: 8px; min-height: 54px; }
+      .ataglance-label { font-size: 10px; text-transform: uppercase; color: #64748b; letter-spacing: .03em; }
+      .ataglance-value { font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 3px; }
+      .bottom-drawer { min-height: 0; }
       .section-title { margin-top: 0; margin-bottom: 10px; font-size: 18px; line-height: 1.25; padding-bottom: 6px; border-bottom: 1px solid #e8eef8; }
       .section-body { padding-right: 2px; }
       .section-body p { margin: 0 0 10px; }
@@ -276,8 +283,23 @@
       .cmdk-empty { padding: 12px; font-size: 12px; color: #64748b; }
       .live-controls { display: inline-flex; gap: 6px; align-items: center; }
       .live-controls button { border: 1px solid #c7d4ea; background: #fff; border-radius: 999px; font-size: 11px; padding: 4px 8px; cursor: pointer; }
-      @media (max-width: 1180px) { .dashboard { grid-template-columns: 1fr; } .card.span-2 { grid-column: auto; } .timeline-ataglance { grid-template-columns: 1fr; } .kpi-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); } .snapshot-grid { grid-template-columns: 1fr; } }
-      @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .status-chip { max-width: 100%; width: 100%; } .obs-row { grid-template-columns: 1fr; } .ledger-controls { grid-template-columns: 1fr 1fr; } .review-grid { grid-template-columns: 1fr 1fr; } }
+      @media (max-width: 1180px) {
+        .workspace-grid { grid-template-columns: 1fr; }
+        .workspace-grid .pane { min-height: auto; overflow: visible; }
+        .ataglance-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+        .timeline-ataglance { grid-template-columns: 1fr; }
+        .kpi-strip { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+        .snapshot-grid { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 960px) {
+        .layout { grid-template-columns: 1fr; min-height: auto; }
+        .main { overflow: visible; }
+        .dashboard { height: auto; }
+        .status-chip { max-width: 100%; width: 100%; }
+        .obs-row { grid-template-columns: 1fr; }
+        .ledger-controls { grid-template-columns: 1fr 1fr; }
+        .review-grid { grid-template-columns: 1fr 1fr; }
+      }
     </style>
   </head>
   <body {% if notebook %}data-actor-id="{{ notebook.actor.id }}"{% endif %}>
@@ -403,7 +425,28 @@
         <div class="empty">Select an actor to open the notebook.</div>
         {% else %}
         <div class="dashboard">
-        <section class="card" data-step="who" id="section-who">
+        {% set recent_change = notebook.get('recent_change_summary', {'new_reports': '0', 'targets': 'Not clear yet', 'damage': 'No clear damage outcome reported yet'}) %}
+        <section class="card span-2 ataglance-strip" id="section-ataglance">
+          <div class="ataglance-metric">
+            <div class="ataglance-label">Actor</div>
+            <div class="ataglance-value">{{ notebook.actor.display_name }}</div>
+          </div>
+          <div class="ataglance-metric">
+            <div class="ataglance-label">New Reports</div>
+            <div class="ataglance-value"><span id="recent-reports">{{ recent_change.new_reports }}</span></div>
+          </div>
+          <div class="ataglance-metric">
+            <div class="ataglance-label">Activity (30d)</div>
+            <div class="ataglance-value">{{ notebook.kpis.activity_30d }}</div>
+          </div>
+          <div class="ataglance-metric">
+            <div class="ataglance-label">Notable Impact</div>
+            <div class="ataglance-value"><span id="recent-impact">{{ recent_change.damage }}</span></div>
+          </div>
+        </section>
+
+        <div class="workspace-grid">
+        <section class="card pane" data-step="who" id="section-who">
           <h2 class="section-title">1) Who are they?</h2>
           <div class="section-body">
           <p>{{ notebook.actor_profile_summary }}</p>
@@ -464,18 +507,17 @@
           {% endif %}
         </section>
 
-        <section class="card" data-step="recent" id="section-recent">
+        <section class="card pane" data-step="recent" id="section-recent">
           <h2 class="section-title">2) What have they been up to recently?</h2>
           {% if notebook.actor.notebook_status == 'running' %}
           <div class="notice status-working">Source collection is running in the background. This section will populate automatically.</div>
           {% endif %}
           <div class="section-body">
-          {% set recent_change = notebook.get('recent_change_summary', {'new_reports': '0', 'targets': 'Not clear yet', 'damage': 'No clear damage outcome reported yet'}) %}
           <p><strong>Recent activity snapshot:</strong></p>
           <ul class="summary-list">
-            <li><strong>Report count:</strong> <span id="recent-reports">{{ recent_change.new_reports }}</span></li>
+            <li><strong>Report count:</strong> {{ recent_change.new_reports }}</li>
             <li><strong>Target sectors:</strong> <span id="recent-targets">{{ recent_change.targets }}</span></li>
-            <li><strong>Reported impact:</strong> <span id="recent-impact">{{ recent_change.damage }}</span></li>
+            <li><strong>Reported impact:</strong> {{ recent_change.damage }}</li>
           </ul>
           {% if notebook.recent_activity_synthesis %}
           <p class="inline-note"><strong>How to read:</strong> left to right = change, affected area, and recommended first action.</p>
@@ -731,7 +773,7 @@
           </details>
         </section>
 
-        <section class="card span-2" data-step="action" id="section-history">
+        <section class="card pane" data-step="action" id="section-history">
           <h2 class="section-title">3) What changed?</h2>
           <p class="deemphasized" style="margin:0 0 8px;">
             System notes changes automatically. Edit only what needs analyst context.
@@ -805,7 +847,7 @@
         </section>
 
         {% if notebook.priority_questions %}
-        <section class="card span-2 decision-queue" data-step="action">
+        <section class="card pane decision-queue" data-step="action">
           <div class="decision-header">
             <h2 class="section-title" style="margin:0;">Quick checks</h2>
             <a href="/actors/{{ notebook.actor.id }}/questions">Open workspace</a>
@@ -827,8 +869,9 @@
           </div>
         </section>
         {% endif %}
+        </div>
 
-        <section class="card span-2" data-step="recent" id="section-timeline">
+        <section class="card span-2 bottom-drawer" data-step="recent" id="section-timeline">
           <h2 class="section-title">4) Activity over time</h2>
           {% if notebook.actor.notebook_status == 'running' %}
           <div class="notice status-working">Timeline events are being generated from source evidence.</div>
