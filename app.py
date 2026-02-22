@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, quote, quote_plus, urlparse
 import httpx
 import actor_state_service
 import guidance_catalog
+import legacy_ui
 import mitre_store
 import priority_questions
 import routes_api
@@ -2504,26 +2505,14 @@ app.include_router(
 
 
 def actors_ui() -> str:
-    actor_items = ''.join(
-        (
-            f'<li>{html.escape(str(actor["id"]), quote=True)} - '
-            f'{html.escape(str(actor["display_name"]), quote=True)}</li>'
-        )
-        for actor in list_actor_profiles()
-    )
-    return (
-        '<!doctype html>'
-        '<html><body>'
-        '<h1>Actors</h1>'
-        '<form method="post" action="/actors">'
-        '<label for="display_name">Display Name</label>'
-        '<input id="display_name" name="display_name" required />'
-        '<button type="submit">Create</button>'
-        '</form>'
-        '<ul>'
-        f'{actor_items}'
-        '</ul>'
-        '</body></html>'
+    return legacy_ui.render_actors_ui(
+        actors=[
+            {
+                'id': actor['id'],
+                'display_name': actor['display_name'],
+            }
+            for actor in list_actor_profiles()
+        ]
     )
 
 
