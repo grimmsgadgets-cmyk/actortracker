@@ -20,6 +20,7 @@ import httpx
 import guidance_catalog
 import mitre_store
 import priority_questions
+import routes_api
 import timeline_extraction
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -2401,11 +2402,20 @@ def initialize_sqlite() -> None:
         if not any(col[1] == 'validation_notes' for col in requirement_cols):
             connection.execute("ALTER TABLE requirement_items ADD COLUMN validation_notes TEXT NOT NULL DEFAULT ''")
         connection.commit()
-
-
-@app.get('/health')
-def health() -> dict[str, str]:
-    return {'status': 'ok'}
+app.include_router(
+    routes_api.create_api_router(
+        deps={
+            'list_actor_profiles': list_actor_profiles,
+            'enforce_request_size': _enforce_request_size,
+            'default_body_limit_bytes': DEFAULT_BODY_LIMIT_BYTES,
+            'create_actor_profile': create_actor_profile,
+            'db_path': lambda: DB_PATH,
+            'actor_exists': actor_exists,
+            'set_actor_notebook_status': set_actor_notebook_status,
+            'run_actor_generation': run_actor_generation,
+        }
+    )
+)
 
 
 @app.get('/', response_class=HTMLResponse)
@@ -2508,45 +2518,6 @@ def root(
     )
 
 
-@app.get('/actors')
-def get_actors() -> list[dict[str, str | None]]:
-    actors = list_actor_profiles()
-    return [
-        {
-            'id': str(actor['id']),
-            'display_name': str(actor['display_name']),
-            'scope_statement': actor['scope_statement'],
-            'created_at': str(actor['created_at']),
-        }
-        for actor in actors
-    ]
-
-
-@app.post('/actors')
-async def create_actor(request: Request) -> dict[str, str | None]:
-    await _enforce_request_size(request, DEFAULT_BODY_LIMIT_BYTES)
-    content_type = request.headers.get('content-type', '')
-    if 'application/json' in content_type:
-        payload = await request.json()
-    else:
-        form_data = await request.form()
-        payload = dict(form_data)
-
-    display_name_raw = payload.get('display_name')
-    is_tracked_raw = payload.get('is_tracked')
-    display_name = str(display_name_raw).strip() if display_name_raw is not None else ''
-    scope_statement = None
-    if is_tracked_raw is None:
-        is_tracked = True
-    else:
-        is_tracked = str(is_tracked_raw).strip().lower() in {'1', 'true', 'on', 'yes'}
-
-    if not display_name:
-        raise HTTPException(status_code=400, detail='display_name is required')
-
-    return create_actor_profile(display_name, scope_statement, is_tracked=is_tracked)
-
-
 @app.post('/actors/new')
 async def create_actor_ui(request: Request, background_tasks: BackgroundTasks) -> RedirectResponse:
     await _enforce_request_size(request, DEFAULT_BODY_LIMIT_BYTES)
@@ -2567,36 +2538,6 @@ async def create_actor_ui(request: Request, background_tasks: BackgroundTasks) -
         url=f'/?actor_id={actor["id"]}&notice=Tracking+started.+Building+notebook+in+the+background.',
         status_code=303,
     )
-
-
-@app.post('/actors/{actor_id}/track')
-def track_actor(actor_id: str, background_tasks: BackgroundTasks) -> RedirectResponse:
-    with sqlite3.connect(DB_PATH) as connection:
-        if not actor_exists(connection, actor_id):
-            raise HTTPException(status_code=404, detail='actor not found')
-        connection.execute('UPDATE actor_profiles SET is_tracked = 1 WHERE id = ?', (actor_id,))
-        connection.commit()
-    set_actor_notebook_status(
-        actor_id,
-        'running',
-        'Fetching sources and generating open analytic questions and timeline entries...',
-    )
-    background_tasks.add_task(run_actor_generation, actor_id)
-    return RedirectResponse(
-        url=f'/?actor_id={actor_id}&notice=Notebook generation started',
-        status_code=303,
-    )
-
-
-@app.post('/actors/{actor_id}/untrack')
-def untrack_actor(actor_id: str) -> RedirectResponse:
-    with sqlite3.connect(DB_PATH) as connection:
-        if not actor_exists(connection, actor_id):
-            raise HTTPException(status_code=404, detail='actor not found')
-        connection.execute('UPDATE actor_profiles SET is_tracked = 0 WHERE id = ?', (actor_id,))
-        connection.commit()
-    set_actor_notebook_status(actor_id, 'idle', 'Actor untracked.')
-    return RedirectResponse(url=f'/?actor_id={actor_id}', status_code=303)
 
 
 @app.get('/actors/ui', response_class=HTMLResponse)
