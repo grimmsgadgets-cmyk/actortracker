@@ -4,6 +4,7 @@ import sqlite3
 import uuid
 from urllib.parse import quote
 
+import route_paths
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -44,7 +45,7 @@ def create_evolution_router(*, deps: dict[str, object]) -> APIRouter:
             'created_at': row[3],
         }
 
-    @router.post('/actors/{actor_id}/state/observations')
+    @router.post(route_paths.ACTOR_STATE_OBSERVATIONS)
     async def create_observation(actor_id: str, request: Request) -> dict[str, object]:
         await _enforce_request_size(request, _observation_body_limit_bytes)
         payload = await request.json()
@@ -155,7 +156,7 @@ def create_evolution_router(*, deps: dict[str, object]) -> APIRouter:
 
         return observation
 
-    @router.get('/actors/{actor_id}/state/observations')
+    @router.get(route_paths.ACTOR_STATE_OBSERVATIONS)
     def list_observations(actor_id: str) -> list[dict[str, object]]:
         with sqlite3.connect(_db_path()) as connection:
             if not _actor_exists(connection, actor_id):

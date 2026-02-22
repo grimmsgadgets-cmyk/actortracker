@@ -3,8 +3,9 @@ import io
 import sqlite3
 import uuid
 import csv
-from datetime import date
 
+import observation_service
+import route_paths
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
@@ -30,36 +31,16 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
         updated_from: str | None = None,
         updated_to: str | None = None,
     ) -> list[dict[str, object]]:
-        where_clauses = ['actor_id = ?']
-        params: list[object] = [actor_id]
-
-        analyst_text = str(analyst or '').strip().lower()
-        if analyst_text:
-            where_clauses.append('LOWER(updated_by) LIKE ?')
-            params.append(f'%{analyst_text}%')
-
-        confidence_value = str(confidence or '').strip().lower()
-        if confidence_value in {'low', 'moderate', 'high'}:
-            where_clauses.append('confidence = ?')
-            params.append(confidence_value)
-
-        from_value = str(updated_from or '').strip()
-        if from_value:
-            try:
-                parsed_from = date.fromisoformat(from_value)
-                where_clauses.append('substr(updated_at, 1, 10) >= ?')
-                params.append(parsed_from.isoformat())
-            except ValueError:
-                pass
-
-        to_value = str(updated_to or '').strip()
-        if to_value:
-            try:
-                parsed_to = date.fromisoformat(to_value)
-                where_clauses.append('substr(updated_at, 1, 10) <= ?')
-                params.append(parsed_to.isoformat())
-            except ValueError:
-                pass
+        normalized_filters = observation_service.normalize_observation_filters_core(
+            analyst=analyst,
+            confidence=confidence,
+            updated_from=updated_from,
+            updated_to=updated_to,
+        )
+        where_sql, params = observation_service.build_observation_where_clause_core(
+            actor_id,
+            filters=normalized_filters,
+        )
 
         with sqlite3.connect(_db_path()) as connection:
             if not _actor_exists(connection, actor_id):
@@ -69,18 +50,12 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
                 SELECT item_type, item_key, note, source_ref, confidence,
                        source_reliability, information_credibility, updated_by, updated_at
                 FROM analyst_observations
-                WHERE {' AND '.join(where_clauses)}
+                WHERE {where_sql}
                 ORDER BY updated_at DESC
                 ''',
                 params,
             ).fetchall()
-            source_keys = sorted(
-                {
-                    str(row[1])
-                    for row in rows
-                    if str(row[0] or '').strip().lower() == 'source' and str(row[1] or '').strip()
-                }
-            )
+            source_keys = observation_service.observation_source_keys_core(rows)
             source_lookup: dict[str, dict[str, str]] = {}
             if source_keys:
                 placeholders = ','.join('?' for _ in source_keys)
@@ -101,26 +76,9 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
                     }
                     for source_row in source_rows
                 }
-        return [
-            {
-                'item_type': row[0],
-                'item_key': row[1],
-                'note': row[2] or '',
-                'source_ref': row[3] or '',
-                'confidence': row[4] or 'moderate',
-                'source_reliability': row[5] or '',
-                'information_credibility': row[6] or '',
-                'updated_by': row[7] or '',
-                'updated_at': row[8] or '',
-                'source_name': source_lookup.get(str(row[1]), {}).get('source_name', ''),
-                'source_url': source_lookup.get(str(row[1]), {}).get('source_url', ''),
-                'source_title': source_lookup.get(str(row[1]), {}).get('source_title', ''),
-                'source_date': source_lookup.get(str(row[1]), {}).get('source_date', ''),
-            }
-            for row in rows
-        ]
+        return observation_service.map_observation_rows_core(rows, source_lookup=source_lookup)
 
-    @router.post('/actors/{actor_id}/requirements/generate')
+    @router.post(route_paths.ACTOR_NOTEBOOK_REQUIREMENTS_GENERATE)
     async def generate_requirements(actor_id: str, request: Request) -> RedirectResponse:
         await _enforce_request_size(request, _default_body_limit_bytes)
         form_data = await request.form()
@@ -177,7 +135,7 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
 
         return RedirectResponse(url=f'/?actor_id={actor_id or db_actor_id}', status_code=303)
 
-    @router.get('/actors/{actor_id}/timeline/details', response_class=HTMLResponse)
+    @router.get(route_paths.ACTOR_TIMELINE_DETAILS, response_class=HTMLResponse)
     def actor_timeline_details(actor_id: str) -> HTMLResponse:
         with sqlite3.connect(_db_path()) as connection:
             actor_row = connection.execute(
@@ -268,7 +226,7 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
         content.append('</div></body></html>')
         return HTMLResponse(''.join(content))
 
-    @router.get('/actors/{actor_id}/questions', response_class=HTMLResponse)
+    @router.get(route_paths.ACTOR_QUESTIONS_WORKSPACE, response_class=HTMLResponse)
     def actor_questions_workspace(request: Request, actor_id: str) -> HTMLResponse:
         notebook = _fetch_actor_notebook(actor_id)
         return _templates.TemplateResponse(
@@ -280,7 +238,7 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             },
         )
 
-    @router.get('/actors/{actor_id}/ui/live', response_class=JSONResponse)
+    @router.get(route_paths.ACTOR_UI_LIVE, response_class=JSONResponse)
     def actor_live_state(actor_id: str) -> dict[str, object]:
         notebook = _fetch_actor_notebook(actor_id)
         return {
@@ -294,7 +252,7 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             'timeline_window_label': notebook.get('timeline_window_label', ''),
         }
 
-    @router.get('/actors/{actor_id}/observations', response_class=JSONResponse)
+    @router.get(route_paths.ACTOR_OBSERVATIONS, response_class=JSONResponse)
     def list_observations(
         actor_id: str,
         analyst: str | None = None,
@@ -314,7 +272,7 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             'items': items,
         }
 
-    @router.get('/actors/{actor_id}/observations/export.json', response_class=JSONResponse)
+    @router.get(route_paths.ACTOR_OBSERVATIONS_EXPORT_JSON, response_class=JSONResponse)
     def export_observations_json(
         actor_id: str,
         analyst: str | None = None,
@@ -341,7 +299,7 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             'items': items,
         }
 
-    @router.get('/actors/{actor_id}/observations/export.csv')
+    @router.get(route_paths.ACTOR_OBSERVATIONS_EXPORT_CSV)
     def export_observations_csv(
         actor_id: str,
         analyst: str | None = None,
@@ -403,7 +361,7 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             },
         )
 
-    @router.post('/actors/{actor_id}/observations/{item_type}/{item_key}', response_class=JSONResponse)
+    @router.post(route_paths.ACTOR_OBSERVATION_UPSERT, response_class=JSONResponse)
     async def upsert_observation(actor_id: str, item_type: str, item_key: str, request: Request) -> dict[str, object]:
         await _enforce_request_size(request, _default_body_limit_bytes)
         payload = await request.json()
