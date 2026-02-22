@@ -199,6 +199,7 @@
       .timeline-table tr:hover { background: #f3f8ff; }
       .timeline-empty { margin-top: 8px; font-size: 12px; color: #475569; }
       .observation-meta { margin-top: 4px; font-size: 11px; color: #475569; }
+      .observation-guidance { margin-top: 2px; font-size: 11px; color: #7a3e00; }
       .obs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
       .obs-row input, .obs-row select, .obs-row textarea { width: 100%; box-sizing: border-box; padding: 6px; border-radius: 6px; border: 1px solid #cdd8ea; font-size: 12px; }
       .obs-row textarea { min-height: 70px; resize: vertical; grid-column: 1 / -1; }
@@ -559,6 +560,7 @@
                     <button type="button" class="observation-save">Save observation</button>
                     <span class="observation-meta" data-observation-meta></span>
                   </div>
+                  <div class="observation-guidance" data-observation-guidance></div>
                 </div>
               </details>
             </li>
@@ -613,6 +615,7 @@
                         <button type="button" class="observation-save">Save observation</button>
                         <span class="observation-meta" data-observation-meta></span>
                       </div>
+                      <div class="observation-guidance" data-observation-guidance></div>
                     </div>
                   </details>
                 </li>

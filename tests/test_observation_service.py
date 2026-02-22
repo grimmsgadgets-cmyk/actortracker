@@ -62,3 +62,26 @@ def test_source_lookup_chunks_respects_chunk_size():
     assert len(chunks[0]) == 800
     assert len(chunks[1]) == 800
     assert len(chunks[2]) == 205
+
+
+def test_observation_quality_guidance_flags_high_confidence_without_supporting_fields():
+    guidance = observation_service.observation_quality_guidance_core(
+        note='Suspicious activity observed.',
+        source_ref='',
+        confidence='high',
+        source_reliability='',
+        information_credibility='',
+    )
+    assert guidance
+    assert any('source reference' in item for item in guidance)
+    assert any('source reliability' in item for item in guidance)
+
+
+def test_map_observation_rows_includes_quality_guidance():
+    rows = [
+        ('source', 'src-1', 'Needs review', '', 'high', '', '', 'alice', '2026-02-22T12:00:00+00:00'),
+    ]
+    items = observation_service.map_observation_rows_core(rows, source_lookup={})
+    assert 'quality_guidance' in items[0]
+    assert isinstance(items[0]['quality_guidance'], list)
+    assert items[0]['quality_guidance']

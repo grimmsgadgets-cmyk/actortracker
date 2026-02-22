@@ -409,6 +409,13 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             information_credibility = ''
         updated_by = str(payload.get('updated_by') or '').strip()[:120]
         updated_at = _utc_now_iso()
+        quality_guidance = observation_service.observation_quality_guidance_core(
+            note=note,
+            source_ref=source_ref,
+            confidence=confidence,
+            source_reliability=source_reliability,
+            information_credibility=information_credibility,
+        )
 
         safe_item_type = item_type.strip().lower()[:40]
         safe_item_key = item_key.strip()[:200]
@@ -463,6 +470,7 @@ def create_notebook_router(*, deps: dict[str, object]) -> APIRouter:
             'information_credibility': information_credibility,
             'updated_by': updated_by,
             'updated_at': updated_at,
+            'quality_guidance': quality_guidance,
         }
 
     return router

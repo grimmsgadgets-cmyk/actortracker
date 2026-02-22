@@ -876,6 +876,36 @@ def test_observation_filters_and_exports(tmp_path, monkeypatch):
         assert 'Lower-confidence duplicate note.' not in csv_export.text
 
 
+def test_observation_upsert_returns_non_blocking_quality_guidance(tmp_path, monkeypatch):
+    _setup_db(tmp_path)
+    actor = app_module.create_actor_profile('APT-Obs-Q', 'Observation quality guidance scope')
+    monkeypatch.setattr(app_module, 'run_actor_generation', lambda actor_id: None)
+    monkeypatch.setattr(
+        app_module,
+        'get_ollama_status',
+        lambda: {'available': False, 'base_url': 'http://offline', 'model': 'none'},
+    )
+
+    with TestClient(app_module.app) as client:
+        response = client.post(
+            f"/actors/{actor['id']}/observations/source/src-guidance",
+            json={
+                'updated_by': 'alice',
+                'confidence': 'high',
+                'note': 'Needs review',
+                'source_ref': '',
+                'source_reliability': '',
+                'information_credibility': '',
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload['ok'] is True
+        assert isinstance(payload.get('quality_guidance'), list)
+        assert payload['quality_guidance']
+        assert any('source reference' in item for item in payload['quality_guidance'])
+
+
 def test_root_sidebar_shows_actor_last_updated_label(tmp_path, monkeypatch):
     _setup_db(tmp_path)
     actor = app_module.create_actor_profile('APT-Sidebar', 'Sidebar label scope')

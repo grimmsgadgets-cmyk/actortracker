@@ -86,6 +86,52 @@ def source_lookup_chunks_core(source_keys: Sequence[str], *, chunk_size: int = 8
     return [keys[idx: idx + safe_chunk_size] for idx in range(0, len(keys), safe_chunk_size)]
 
 
+def observation_quality_guidance_core(
+    *,
+    note: str,
+    source_ref: str,
+    confidence: str,
+    source_reliability: str,
+    information_credibility: str,
+) -> list[str]:
+    cleaned_note = ' '.join(str(note or '').split())
+    lowered_note = cleaned_note.lower()
+    confidence_value = str(confidence or '').strip().lower()
+    source_ref_value = str(source_ref or '').strip()
+    source_reliability_value = str(source_reliability or '').strip().upper()
+    info_credibility_value = str(information_credibility or '').strip()
+
+    guidance: list[str] = []
+    if confidence_value == 'high' and not source_ref_value:
+        guidance.append('High confidence should include a source reference (case/report/ticket id).')
+
+    if confidence_value == 'high' and (not source_reliability_value or not info_credibility_value):
+        guidance.append('High confidence should include source reliability (A-F) and information credibility (1-6).')
+
+    words = [token for token in lowered_note.split(' ') if token]
+    if not words:
+        guidance.append('Add a short note describing what changed versus prior assessment.')
+    elif len(words) < 6:
+        guidance.append('Add one concrete detail (behavior, target, or timeframe) to reduce ambiguity.')
+
+    vague_phrases = (
+        'looks bad',
+        'suspicious activity',
+        'monitor this',
+        'needs review',
+        'check this',
+        'watch this',
+    )
+    if lowered_note and len(words) <= 12 and any(phrase in lowered_note for phrase in vague_phrases):
+        guidance.append('Replace vague wording with one evidence-backed observation from this source.')
+
+    rationale_tokens = ('because', 'since', 'due to', 'based on', 'confirmed', 'observed', 'evidence')
+    if confidence_value in {'high', 'moderate'} and lowered_note and not any(token in lowered_note for token in rationale_tokens):
+        guidance.append('Add a short confidence rationale (for example: based on two corroborating reports).')
+
+    return guidance[:3]
+
+
 def map_observation_rows_core(
     rows: Sequence[tuple[object, ...]],
     *,
@@ -102,6 +148,13 @@ def map_observation_rows_core(
             'information_credibility': row[6] or '',
             'updated_by': row[7] or '',
             'updated_at': row[8] or '',
+            'quality_guidance': observation_quality_guidance_core(
+                note=str(row[2] or ''),
+                source_ref=str(row[3] or ''),
+                confidence=str(row[4] or 'moderate'),
+                source_reliability=str(row[5] or ''),
+                information_credibility=str(row[6] or ''),
+            ),
             'source_name': source_lookup.get(str(row[1]), {}).get('source_name', ''),
             'source_url': source_lookup.get(str(row[1]), {}).get('source_url', ''),
             'source_title': source_lookup.get(str(row[1]), {}).get('source_title', ''),

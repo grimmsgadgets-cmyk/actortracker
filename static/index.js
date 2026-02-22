@@ -188,6 +188,7 @@
           const sourceRefField = card.querySelector(".observation-source-ref");
           const noteField = card.querySelector(".observation-note");
           const metaNode = card.querySelector("[data-observation-meta]");
+          const guidanceNode = card.querySelector("[data-observation-guidance]");
 
           if (analystField && data.updated_by) analystField.value = data.updated_by;
           if (confidenceField && data.confidence) confidenceField.value = data.confidence;
@@ -201,6 +202,10 @@
             const confidence = String(data.confidence || "moderate");
             const ratingText = ratingLabel(data);
             metaNode.textContent = updatedAt ? "Saved " + updatedAt + " by " + (updatedBy || "analyst") + " | " + confidence + " | rating " + ratingText : "";
+          }
+          if (guidanceNode) {
+            const guidanceItems = Array.isArray(data.quality_guidance) ? data.quality_guidance : [];
+            guidanceNode.textContent = guidanceItems.length ? "Guidance: " + guidanceItems.join(" ") : "";
           }
         }
 
@@ -468,7 +473,11 @@
                 "/actors/" + encodeURIComponent(actorId) + "/observations/" + encodeURIComponent(itemType) + "/" + encodeURIComponent(itemKey),
                 { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify(payload) }
               );
-              if (!response.ok) return;
+              if (!response.ok) {
+                const metaNode = card.querySelector("[data-observation-meta]");
+                if (metaNode) metaNode.textContent = "Save failed. Retry.";
+                return;
+              }
               const data = await response.json();
               observationStore.set(observationMapKey(itemType, itemKey), data);
               observationCards
